@@ -1,7 +1,8 @@
 // 64×64 を 32×32 のセル 2×2 に分割し、各セルの中で楕円と正円をぐにゃぐにゃと変形させる。
-// source: リソグラフの4分割ポスター。平らな色面、面を横切る黒い実線の楕円束。
-// rule: 全セルが1つの位相 φ を共有する。φ が 0→2π を回る間に全図形が変形し、同じ形へ戻る。
-// exception: 縦に隣り合うセルは上下反転し、地と塗りの色を入れ替える。
+// source: リソグラフの4分割ポスター。平らな色面、面を横切る黒い実線の楕円。
+// rule: 図形は1つずつ「塗り」と「線」を持つ。大きい順に奥から重ね、奥の線は手前の塗りに隠れる。
+//       線は図形の輪郭そのものなので、色面と線が同じ1つの図形として動く。
+// exception: 手前の数枚だけ塗りを持たない（塗りなし・線あり）。色面を横切る実線はこれ。
 
 const GRID = 2;           // 1辺のセル数。2→32px、4→16px、8→8px。64 を割り切る値なら差し替えられる。
 const CELL = 64 / GRID;   // 1セルの辺。以降の寸法はすべて CELL 比で書く（拡張してもレイアウトが崩れない）。
@@ -9,10 +10,11 @@ const SIZE = CELL * GRID; // 盤面の辺。64。
 const PERIOD = 14;        // 秒。全セル共通の変形周期。
 const TAU = Math.PI * 2;
 
-const EDGE = 0.7;         // 色面のエッジのぼかし幅（px）。0 に近づけるとジャギーになる。
-const LINE = 0.25;        // 実線の半幅（px）。LED では 0.2〜0.4 がちょうど1px の線に見える。
+const EDGE = 0.7;         // 塗りのエッジと線のぼかし幅（px）。0 に近づけるとジャギーになる。
+const LINE = 0.25;        // 線の半幅（px）。LED では 0.2〜0.4 がちょうど1px の線に見える。
 const SEAM = 0.14;        // セルの内側の境界に落とす影。0 にすると境界は色の変わり目だけになる。
-const INK = [10, 10, 14]; // 実線の色。LED では消灯に近い黒。
+const INK = [10, 10, 14]; // 線の色。LED では消灯に近い黒。全図形が共通の線色を持つ。
+const BARE = 2;           // 手前の何枚を「塗りなし・線あり」にするか。0 にすると全図形が塗られる。
 
 // リソグラフの平網に近い、彩度の高い不透明色。
 // 紙の原色より一段明るくしている。LED では暗い色面に落とした黒い実線が見えなくなるため。
@@ -41,7 +43,7 @@ const PAIRS = [
   [PAPER, ORANGE]
 ];
 
-// 束ねる楕円の本数。セルが小さいほど減らし、線が潰れないようにする。
+// 束ねる楕円の本数。セルが小さいほど減らし、図形が潰れないようにする。
 const STROKES = Math.max(2, Math.round(CELL / 6));
 
 const clampUnit = (value) => (value < 0 ? 0 : value > 1 ? 1 : value);
@@ -131,7 +133,7 @@ function buildCell(cellX, cellY, phi) {
   const x = cellX * CELL + CELL / 2 - 0.5 + Math.sin(phi + offset) * wander;
   const y = cellY * CELL + CELL / 2 - 0.5 + Math.sin(2 * phi + offset) * wander * flip * 0.7;
 
-  // 面積を保ちながら縦横に伸び縮みする。round のセルはほぼ正円のまま脈打つ。
+  // セルの主役。面積を保ちながら縦横に伸び縮みする。round のセルはほぼ正円のまま脈打つ。
   const breathe = 1 + 0.09 * Math.sin(phi + offset);
   const base = shape(
     x,
@@ -145,7 +147,7 @@ function buildCell(cellX, cellY, phi) {
     phi
   );
 
-  // 実線の束。短軸の端を継ぎ目の1点で束ね、傾きを散らして扇に開く。
+  // 楕円の束。短軸の端を継ぎ目の1点で束ね、傾きを散らして扇に開く。
   // ピンチは行ごとに上下入れ替わるので、縦に隣り合うセルは継ぎ目を挟んで鏡像になる。
   const side = flip;
   const pinchX = cellX * CELL + CELL / 2 - 0.5 + Math.sin(phi * 2 + offset) * CELL * 0.09;
@@ -157,50 +159,74 @@ function buildCell(cellX, cellY, phi) {
   const swell = 1 + 0.14 * Math.sin(phi + offset);
   const ripple = [{ freq: 2, amp: 0.05, k: 1, phase: offset }, { freq: 3, amp: 0.025, k: -1 }];
 
-  const strokes = [];
-  for (let i = 0; i < STROKES; i += 1) {
+  // 束を大きい順に並べる。細い側の数枚は塗りを持たない（色面を横切る実線になる）。
+  const bare = Math.min(BARE, STROKES - 1);
+  const fan = [];
+  for (let i = STROKES - 1; i >= 0; i -= 1) {
     const t = i / (STROKES - 1); // 0 が内側の平たい楕円、1 がセルをまたぐ大きな楕円
-    strokes.push(anchored(
-      pinchX,
-      pinchY,
-      CELL * (0.22 + 0.24 * t),
-      CELL * (0.3 + 0.55 * t) * swell,
-      spin * spread * (t - 0.5) * 2,
-      side,
-      ripple,
-      phi
-    ));
+    fan.push({
+      form: anchored(
+        pinchX,
+        pinchY,
+        CELL * (0.22 + 0.24 * t),
+        CELL * (0.3 + 0.55 * t) * swell,
+        spin * spread * (t - 0.5) * 2,
+        side,
+        ripple,
+        phi
+      ),
+      bare: i < bare
+    });
   }
 
-  // ゆがまない正円のストローク。ぐにゃぐにゃした束の中で、これだけが基準の形として残る。
-  const circle = CELL * (0.36 + 0.05 * Math.sin(2 * phi + offset));
-  strokes.push(shape(x, y, circle, circle, 0, [], phi));
+  // ゆがまない正円。ぐにゃぐにゃした楕円の中で、これだけが基準の形として残る。
+  const radius = CELL * (0.36 + 0.05 * Math.sin(2 * phi + offset));
+  const circle = { form: shape(x, y, radius, radius, 0, [], phi), bare: false };
 
-  return { colors: PAIRS[index % PAIRS.length], base, strokes };
+  // 奥から手前への並びは固定する。大きさで並べ替えると、伸び縮みの途中で層が入れ替わって跳ねる。
+  // 主役は奥から3枚目、正円は塗られる図形の最前列。
+  const seat = Math.min(2, Math.max(0, fan.length - 1)); // 束が短いときも主役を最前面にしない
+  const stack = [...fan.slice(0, seat), { form: base, bare: false }, ...fan.slice(seat)];
+  stack.splice(Math.max(0, stack.length - bare), 0, circle);
+
+  // 塗りは2色を交互に。隣り合う面が違う色になり、境目に自分の線が残る。
+  const [background, accent] = PAIRS[index % PAIRS.length];
+  const forms = stack.map((entry, depth) => ({
+    form: entry.form,
+    fill: entry.bare ? null : depth % 2 === 0 ? accent : background
+  }));
+
+  return { background, forms };
 }
 
 function renderCell(api, cell, originX, originY) {
-  const [background, fill] = cell.colors;
-  const strokes = cell.strokes;
+  const forms = cell.forms;
 
   for (let y = originY; y < originY + CELL; y += 1) {
     for (let x = originX; x < originX + CELL; x += 1) {
-      let r = background[0];
-      let g = background[1];
-      let b = background[2];
+      let r = cell.background[0];
+      let g = cell.background[1];
+      let b = cell.background[2];
 
-      // 色面。内側ほど距離が負になるので、そのまま被覆率へ変える。
-      const covered = clampUnit(0.5 - distance(cell.base, x, y) / EDGE);
-      if (covered > 0) {
-        r = mix(r, fill[0], covered);
-        g = mix(g, fill[1], covered);
-        b = mix(b, fill[2], covered);
-      }
+      // 奥から手前へ、1図形ずつ「塗り→線」の順に置く。距離は1回だけ解いて両方に使う。
+      // 手前の図形の塗りが奥の図形の線を覆うので、線は図形の輪郭として振る舞う。
+      for (let i = 0; i < forms.length; i += 1) {
+        const { form, fill } = forms[i];
+        if (outside(form, x, y)) continue;
+        const signed = distance(form, x, y);
 
-      // 実線は色面の上に乗る。距離の絶対値が線幅の内側にある画素だけ黒くなる。
-      for (let i = 0; i < strokes.length; i += 1) {
-        if (outside(strokes[i], x, y)) continue;
-        const ink = clampUnit(0.5 + (LINE - Math.abs(distance(strokes[i], x, y))) / EDGE);
+        if (fill !== null) {
+          // 内側ほど距離が負になるので、そのまま被覆率へ変える。
+          const covered = clampUnit(0.5 - signed / EDGE);
+          if (covered > 0) {
+            r = mix(r, fill[0], covered);
+            g = mix(g, fill[1], covered);
+            b = mix(b, fill[2], covered);
+          }
+        }
+
+        // 線は自分の塗りの上に乗る。距離の絶対値が線幅の内側にある画素だけ黒くなる。
+        const ink = clampUnit(0.5 + (LINE - Math.abs(signed)) / EDGE);
         if (ink > 0) {
           r = mix(r, INK[0], ink);
           g = mix(g, INK[1], ink);
