@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LED Sketch</title>
+    <script type="module" crossorigin src="/assets/index-DdIM6aiF.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-B-H2VJXP.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">64 × 64 GENERATIVE ART</p>
+          <h1>LED Sketch</h1>
+        </div>
+        <div class="topbar-actions">
+          <label class="sketch-picker" for="sketch-select">SKETCH
+            <select id="sketch-select" aria-label="Select sketch"></select>
+          </label>
+          <div class="status" aria-live="polite"><span id="status-dot"></span><span id="status">Loading sketch…</span></div>
+        </div>
+      </header>
+
+      <section class="stage" aria-label="LED matrix preview">
+        <div class="matrix-frame">
+          <canvas id="matrix" width="640" height="640" aria-label="64 by 64 LED matrix"></canvas>
+        </div>
+        <aside class="info-panel">
+          <h2>Current sketch</h2>
+          <code id="sketch-name">Loading…</code>
+          <dl>
+            <div><dt>Resolution</dt><dd>64 × 64</dd></div>
+            <div><dt>Preview</dt><dd id="fps">— fps</dd></div>
+            <div><dt>Controls</dt><dd><kbd>Space</kbd> pause / resume</dd></div>
+          </dl>
+          <p class="hint">Zedで保存するとブラウザのプレビューも更新されます。</p>
+        </aside>
+      </section>
+    </main>
+  </body>
+</html>
