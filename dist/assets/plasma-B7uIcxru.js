@@ -1,1 +1,0 @@
-function c(t){const o=t.time();for(let e=0;e<t.height;e+=1)for(let n=0;n<t.width;n+=1){const l=Math.sin(n*.17+o)+Math.sin(e*.14-o*1.3),s=t.noise(n*.09,e*.09,o*.25);let h=.5+l*.15+(s-.5)*.9;h=Math.max(0,Math.min(1,h)),t.pixel(n,e,t.palette("neon",h))}}export{c as draw};

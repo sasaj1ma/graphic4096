@@ -1,6 +1,9 @@
 # 依存パッケージ（package-lock.json から npm install で再現）
 node_modules/
 
+# ビルド成果物（npm run build で再生成）
+dist/
+
 # macOS
 .DS_Store
 

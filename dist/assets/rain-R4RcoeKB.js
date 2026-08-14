@@ -1,1 +1,0 @@
-function g(t){const h=t.time();t.clear(t.rgb(1,4,13));for(let e=0;e<t.width;e+=1){const r=t.noise(e*.19,4)*t.height,o=Math.floor((h*18+r)%t.height);t.pixel(e,o,t.rgb(110,230,255)),t.pixel(e,(o+1)%t.height,t.rgb(23,113,178))}}export{g as draw};
