@@ -1,0 +1,13 @@
+# 依存パッケージ（package-lock.json から npm install で再現）
+node_modules/
+
+# macOS
+.DS_Store
+
+# ログ
+npm-debug.log*
+yarn-error.log*
+
+# エディタ
+.vscode/
+.idea/
