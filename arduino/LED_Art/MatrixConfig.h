@@ -9,6 +9,10 @@ constexpr int kMatrixHeight = 64;
 // 1 で表裏 2 枚のバッファを使う。カクつきの切り分けで 0 にして比較する。
 #define USE_DOUBLE_BUFFER 1
 
+// 1 でクロックとリフレッシュ目標を既定より上げる。
+// 表示が出ない、滲むといった症状が出たら 0 にしてライブラリ既定へ戻す。
+#define PANEL_TUNING 1
+
 // Match these GPIO numbers to the wires you connect to the HUB75 header.
 // GPIO 19/20 are deliberately unused: this keeps the ESP32-S3 native USB free.
 #define R1_PIN 1
@@ -129,8 +133,13 @@ inline void beginMatrix() {
   //
   // 実際に出た値は Diagnostics.h が calculated_refresh_rate として表示する。
   // 100 Hz 以上あれば、ちらつきの原因はここではない。
+  //
+  // クロックを上げすぎるとパネルや配線によっては表示が滲む、または出なくなる。
+  // 表示が出ないときは PANEL_TUNING を 0 にしてライブラリ既定へ戻す。
+#if PANEL_TUNING
   config.i2sspeed = HUB75_I2S_CFG::HZ_20M; // 既定より速い。滲む場合は HZ_15M へ
   config.min_refresh_rate = 120;           // 既定は 85
+#endif
 
   // 表と裏の 2 枚を持ち、描き終わってから表に出す。
   // 1 枚だけだと DMA が走査している最中のバッファに書き込むことになり、
@@ -139,13 +148,22 @@ inline void beginMatrix() {
   // 切り分けのため、0 と 1 を比べられるようにしてある。
   config.double_buff = USE_DOUBLE_BUFFER;
   matrix = new MatrixPanel_I2S_DMA(config);
-  matrix->begin();
+  // 確保に失敗すると以後どう描いても何も出ない。真っ暗なときの一次切り分け。
+  if (!matrix->begin()) {
+    Serial.println(F("matrix->begin() に失敗。DMA バッファを確保できていない。"));
+    Serial.println(F("USE_DOUBLE_BUFFER か PANEL_TUNING を 0 にして試す。"));
+  }
   matrix->setBrightness8(80); // Start conservatively with a 5 V / 4 A adapter.
   matrix->clearScreen();
 }
 
 // 1 フレーム描き終わるたびに呼ぶ。裏で組み立てた絵を表に出す。
 // どのスケッチも毎フレーム全ピクセルを書くので、裏面の消し込みは要らない。
+//
+// ダブルバッファを使わない設定のときに flipDMABuffer() を呼んではいけない。
+// 裏面が存在しないまま表示先を切り替えることになり、画面が真っ暗になる。
 inline void flipFrame() {
+#if USE_DOUBLE_BUFFER
   matrix->flipDMABuffer();
+#endif
 }
