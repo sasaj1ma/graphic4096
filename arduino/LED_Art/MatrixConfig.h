@@ -31,20 +31,27 @@ constexpr int kMatrixHeight = 64;
 
 // Match these GPIO numbers to the wires you connect to the HUB75 header.
 // GPIO 19/20 are deliberately unused: this keeps the ESP32-S3 native USB free.
-#define R1_PIN 1
-#define G1_PIN 2
-#define B1_PIN 3
-#define R2_PIN 4
-#define G2_PIN 5
-#define B2_PIN 6
-#define A_PIN 7
-#define B_PIN 8
-#define C_PIN 9
-#define D_PIN 10
-#define E_PIN 11
-#define LAT_PIN 12
-#define OE_PIN 13
-#define CLK_PIN 14
+#define R1_PIN   4
+#define G1_PIN   5
+#define B1_PIN   6
+
+#define R2_PIN   7
+#define G2_PIN   8
+#define B2_PIN   9
+
+#define A_PIN    10
+#define B_PIN    11
+#define C_PIN    12
+#define D_PIN    13
+#define E_PIN    14
+
+#define LAT_PIN  15
+#define OE_PIN   16
+#define CLK_PIN  17
+
+#define PANEL_WIDTH  64
+#define PANEL_HEIGHT 64
+#define PANEL_CHAIN 1
 
 MatrixPanel_I2S_DMA* matrix = nullptr;
 
