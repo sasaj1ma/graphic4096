@@ -2,7 +2,7 @@
 // Change ACTIVE_SKETCH, then upload this one file from Arduino IDE.
 // 1 = plasma, 2 = rain, 3 = portrait, 4 = approach, 5 = eye of sauron,
 // 6 = lissajous grid, 7 = test pattern (右端の症状の切り分け用)
-#define ACTIVE_SKETCH 1
+#define ACTIVE_SKETCH 7
 
 // 1 にすると、シリアルモニタ(115200)に fps とパネルの走査回数を出す。
 // 原因の切り分けが済んだら 0 に戻す。
