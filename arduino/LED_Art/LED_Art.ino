@@ -18,7 +18,9 @@ void setup() {
 }
 
 void loop() {
-  const float time = millis() / 1000.0f;
+  constexpr uint32_t kFrameMs = 16; // approximately 60 fps
+  const uint32_t frameStart = millis();
+  const float time = frameStart / 1000.0f;
 
 #if ACTIVE_SKETCH == 1
   drawPlasma(time);
@@ -36,5 +38,11 @@ void loop() {
   #error "ACTIVE_SKETCH must be a number from 1 to 6."
 #endif
 
-  delay(16); // approximately 60 fps; the portrait remains still.
+  flipFrame(); // 描き上がった裏面を表に出す
+
+  // delay(16) を固定で入れると、実際のフレーム間隔は 16 ms + 描画時間になり、
+  // 描画が重いスケッチほど遅く、かつ間隔が不揃いになる。
+  // 描画にかかった分を差し引いて、上限を 60 fps に保つ。
+  const uint32_t elapsed = millis() - frameStart;
+  if (elapsed < kFrameMs) delay(kFrameMs - elapsed);
 }

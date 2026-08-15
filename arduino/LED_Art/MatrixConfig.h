@@ -100,7 +100,8 @@ inline float noise3Exact(double x, double y = 0, double z = 0) {
 }
 
 inline Rgb paletteNeon(float value) {
-  const Rgb colors[] = {{9, 6, 25}, {75, 23, 135}, {205, 38, 147}, {50, 225, 186}, {241, 252, 83}};
+  // static がないと、1 フレームに 4096 回この表をスタックに作り直すことになる。
+  static const Rgb colors[] = {{9, 6, 25}, {75, 23, 135}, {205, 38, 147}, {50, 225, 186}, {241, 252, 83}};
   value = unitClamp(value) * 4.0f;
   const int left = min(3, static_cast<int>(floorf(value)));
   const float amount = value - left;
@@ -114,8 +115,19 @@ inline Rgb paletteNeon(float value) {
 inline void beginMatrix() {
   HUB75_I2S_CFG::i2s_pins pins = {R1_PIN, G1_PIN, B1_PIN, R2_PIN, G2_PIN, B2_PIN, A_PIN, B_PIN, C_PIN, D_PIN, E_PIN, LAT_PIN, OE_PIN, CLK_PIN};
   HUB75_I2S_CFG config(kMatrixWidth, kMatrixHeight, 1, pins);
+  // 表と裏の 2 枚を持ち、描き終わってから表に出す。
+  // 1 枚だけだと DMA が走査している最中のバッファに書き込むことになり、
+  // 描きかけの状態がそのまま見えてカクつきやちらつきの原因になる。
+  // メモリ不足で matrix->begin() が失敗する場合は false に戻す。
+  config.double_buff = true;
   matrix = new MatrixPanel_I2S_DMA(config);
   matrix->begin();
   matrix->setBrightness8(80); // Start conservatively with a 5 V / 4 A adapter.
   matrix->clearScreen();
+}
+
+// 1 フレーム描き終わるたびに呼ぶ。裏で組み立てた絵を表に出す。
+// どのスケッチも毎フレーム全ピクセルを書くので、裏面の消し込みは要らない。
+inline void flipFrame() {
+  matrix->flipDMABuffer();
 }
