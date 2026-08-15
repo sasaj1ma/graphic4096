@@ -160,7 +160,9 @@ inline bool beginMatrix() {
 }
 
 // 1 フレーム描き終えたら呼ぶ。裏バッファを表に出す。
-// kDoubleBuffer が false のときは何もしない。
+// kDoubleBuffer が false のときは何もしない。裏バッファが無いまま
+// 表示先を切り替えると画面が真っ暗になるため、ここで止める必要がある。
 inline void endFrame() {
+  if (!kDoubleBuffer) return;
   matrix->flipDMABuffer();
 }
