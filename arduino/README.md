@@ -24,14 +24,25 @@ The values in `LED_Art/MatrixConfig.h` are a proposed direct-wiring map for the 
 
 | HUB75 signal | ESP32-S3 GPIO |
 | --- | ---: |
-| R1, G1, B1 | 1, 2, 3 |
-| R2, G2, B2 | 4, 5, 6 |
-| A, B, C, D, E | 7, 8, 9, 10, 11 |
-| LAT, OE, CLK | 12, 13, 14 |
+| R1, G1, B1 | 4, 5, 6 |
+| R2, G2, B2 | 7, 8, 9 |
+| A, B, C, D, E | 10, 11, 12, 13, 14 |
+| LAT, OE, CLK | 15, 16, 17 |
 
 Keep the panel on its own 5 V power adapter. Never power the panel from the ESP32's USB port. Begin at brightness `80` (in `MatrixConfig.h`); raise it only after stable operation.
 
 If the panel does not display cleanly, confirm the HUB75 header pinout and add a 74AHCT125/74AHCT245 3.3 V → 5 V level shifter. Do not connect 5 V from the panel to any ESP32 GPIO.
+
+## Panel symptoms
+
+The switches for these are at the top of `LED_Art/MatrixConfig.h`. Change one at a time.
+
+| Symptom | Setting | What to do |
+| --- | --- | --- |
+| The rightmost column stays bright, or ghosting trails appear | `LATCH_BLANKING` | Raise it. Library default is 2, maximum 4. Each step blanks OE for longer around the latch, at a slight cost in brightness. |
+| Ghosting remains after raising the blanking | `I2S_CLOCK` | Lower it. `HZ_8M` is the library default; a faster clock buys refresh rate but is harder on long wiring. |
+| The whole panel flickers | `MIN_REFRESH_RATE` | Raise it. The refresh rate is set by colour depth and clock alone, and no amount of drawing faster will change it. `Diagnostics.h` reports the rate the library actually reached. |
+| Nothing lights up at all | `PANEL_TUNING` | Set it to 0 to fall back to library defaults for clock and refresh. A failure in `matrix->begin()` is reported on the serial monitor. |
 
 ## Lissajous grid
 

@@ -3,8 +3,14 @@
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 
-constexpr int kMatrixWidth = 64;
-constexpr int kMatrixHeight = 64;
+#define PANEL_WIDTH  64
+#define PANEL_HEIGHT 64
+#define PANEL_CHAIN  1
+
+// スケッチ側はこちらを使う。寸法の出どころを 1 箇所にまとめ、
+// 片方だけ変えて食い違うのを防ぐ。
+constexpr int kMatrixWidth = PANEL_WIDTH;
+constexpr int kMatrixHeight = PANEL_HEIGHT;
 
 // 1 で表裏 2 枚のバッファを使う。カクつきの切り分けで 0 にして比較する。
 #define USE_DOUBLE_BUFFER 1
@@ -48,10 +54,6 @@ constexpr int kMatrixHeight = 64;
 #define LAT_PIN  15
 #define OE_PIN   16
 #define CLK_PIN  17
-
-#define PANEL_WIDTH  64
-#define PANEL_HEIGHT 64
-#define PANEL_CHAIN 1
 
 MatrixPanel_I2S_DMA* matrix = nullptr;
 
@@ -144,7 +146,7 @@ inline Rgb paletteNeon(float value) {
 
 inline void beginMatrix() {
   HUB75_I2S_CFG::i2s_pins pins = {R1_PIN, G1_PIN, B1_PIN, R2_PIN, G2_PIN, B2_PIN, A_PIN, B_PIN, C_PIN, D_PIN, E_PIN, LAT_PIN, OE_PIN, CLK_PIN};
-  HUB75_I2S_CFG config(kMatrixWidth, kMatrixHeight, 1, pins);
+  HUB75_I2S_CFG config(PANEL_WIDTH, PANEL_HEIGHT, PANEL_CHAIN, pins);
 
   // --- ちらつき対策 ---
   // パネルの走査回数(リフレッシュレート)は、スケッチのフレームレートとは
