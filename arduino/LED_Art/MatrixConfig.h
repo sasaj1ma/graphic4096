@@ -115,6 +115,20 @@ inline Rgb paletteNeon(float value) {
 inline void beginMatrix() {
   HUB75_I2S_CFG::i2s_pins pins = {R1_PIN, G1_PIN, B1_PIN, R2_PIN, G2_PIN, B2_PIN, A_PIN, B_PIN, C_PIN, D_PIN, E_PIN, LAT_PIN, OE_PIN, CLK_PIN};
   HUB75_I2S_CFG config(kMatrixWidth, kMatrixHeight, 1, pins);
+
+  // --- ちらつき対策 ---
+  // パネルの走査回数(リフレッシュレート)は、スケッチのフレームレートとは
+  // 別物で、描画をいくら速くしても上がらない。決まるのはこの2つ。
+  //
+  // 64x64 を既定の 8 bit 色深度で回すと 20〜40 Hz 程度にしかならず、
+  // これが「かくかく」「ちらちら」の正体になっていることが多い。
+  // ライブラリは min_refresh_rate に届くよう下位ビットの精度を削って調整する。
+  //
+  // 実際に出た値は Diagnostics.h が calculated_refresh_rate として表示する。
+  // 100 Hz 以上あれば、ちらつきの原因はここではない。
+  config.i2sspeed = HUB75_I2S_CFG::HZ_20M; // 既定より速い。滲む場合は HZ_15M へ
+  config.min_refresh_rate = 120;           // 既定は 85
+
   // 表と裏の 2 枚を持ち、描き終わってから表に出す。
   // 1 枚だけだと DMA が走査している最中のバッファに書き込むことになり、
   // 描きかけの状態がそのまま見えてカクつきやちらつきの原因になる。

@@ -4,7 +4,12 @@
 // 6 = lissajous grid
 #define ACTIVE_SKETCH 1
 
+// 1 にすると、シリアルモニタ(115200)に fps とパネルの走査回数を出す。
+// 原因の切り分けが済んだら 0 に戻す。
+#define DIAGNOSTICS 1
+
 #include "MatrixConfig.h"
+#include "Diagnostics.h"
 #include "Plasma.h"
 #include "Rain.h"
 #include "Portrait.h"
@@ -15,12 +20,16 @@
 void setup() {
   Serial.begin(115200);
   beginMatrix();
+#if DIAGNOSTICS
+  diagnostics::begin();
+#endif
 }
 
 void loop() {
   constexpr uint32_t kFrameMs = 16; // approximately 60 fps
   const uint32_t frameStart = millis();
   const float time = frameStart / 1000.0f;
+  const uint32_t drawStartUs = micros();
 
 #if ACTIVE_SKETCH == 1
   drawPlasma(time);
@@ -38,7 +47,16 @@ void loop() {
   #error "ACTIVE_SKETCH must be a number from 1 to 6."
 #endif
 
+  const uint32_t drawUs = micros() - drawStartUs;
+  const uint32_t flipStartUs = micros();
   flipFrame(); // 描き上がった裏面を表に出す
+  const uint32_t flipUs = micros() - flipStartUs;
+
+#if DIAGNOSTICS
+  diagnostics::record(drawUs, flipUs);
+#else
+  (void)drawUs; (void)flipUs;
+#endif
 
   // delay(16) を固定で入れると、実際のフレーム間隔は 16 ms + 描画時間になり、
   // 描画が重いスケッチほど遅く、かつ間隔が不揃いになる。
