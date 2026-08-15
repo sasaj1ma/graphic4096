@@ -31,10 +31,27 @@ static float slice0[kLattice][kLattice];  // z = zi   の格子面
 static float slice1[kLattice][kLattice];  // z = zi+1 の格子面
 static float column[kLattice];            // y と z を畳んだ、行ごとの一時値
 
+// paletteNeon() は 1 フレームに 4096 回呼ばれ、そのたびに色表の補間と
+// float から uint8 への丸めを 3 チャンネル分やり直している。
+// 出力はどのみち 8 bit なので、512 段に量子化して引くだけにする。
+// 誤差は 1/255 未満で目には出ない。LissajousGrid.h の expf 対策と同じ。
+constexpr int kPaletteSteps = 512;
+static Rgb paletteLut[kPaletteSteps];
+static bool paletteReady = false;
+
+inline void buildPalette() {
+  for (int i = 0; i < kPaletteSteps; i++) {
+    paletteLut[i] = paletteNeon(i / static_cast<float>(kPaletteSteps - 1));
+  }
+  paletteReady = true;
+}
+
 }  // namespace plasma
 
 inline void drawPlasma(float time) {
   using namespace plasma;
+
+  if (!paletteReady) buildPalette();
 
   // ---- フレームに 1 度だけ計算する ----
 
@@ -83,7 +100,10 @@ inline void drawPlasma(float time) {
       const float cloud = mixf(column[cellX[x]], column[cellX[x] + 1], fracX[x]);
       const float wave = waveX[x] + waveOfRow;
       const float value = unitClamp(0.5f + wave * 0.15f + (cloud - 0.5f) * 0.9f);
-      pixel(x, y, paletteNeon(value));
+      // value は unitClamp 済みなので 0 .. kPaletteSteps-1 に必ず収まる。
+      const Rgb& color = paletteLut[static_cast<int>(value * (kPaletteSteps - 1) + 0.5f)];
+      // x, y はループの範囲内。pixel() の境界判定は毎回同じ結果になるので通さない。
+      matrix->drawPixelRGB888(x, y, color.r, color.g, color.b);
     }
   }
 }
