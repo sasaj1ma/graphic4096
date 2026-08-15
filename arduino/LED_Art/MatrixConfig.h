@@ -6,6 +6,9 @@
 constexpr int kMatrixWidth = 64;
 constexpr int kMatrixHeight = 64;
 
+// 1 で表裏 2 枚のバッファを使う。カクつきの切り分けで 0 にして比較する。
+#define USE_DOUBLE_BUFFER 1
+
 // Match these GPIO numbers to the wires you connect to the HUB75 header.
 // GPIO 19/20 are deliberately unused: this keeps the ESP32-S3 native USB free.
 #define R1_PIN 1
@@ -132,8 +135,9 @@ inline void beginMatrix() {
   // 表と裏の 2 枚を持ち、描き終わってから表に出す。
   // 1 枚だけだと DMA が走査している最中のバッファに書き込むことになり、
   // 描きかけの状態がそのまま見えてカクつきやちらつきの原因になる。
-  // メモリ不足で matrix->begin() が失敗する場合は false に戻す。
-  config.double_buff = true;
+  // メモリ不足で matrix->begin() が失敗する場合は 0 に戻す。
+  // 切り分けのため、0 と 1 を比べられるようにしてある。
+  config.double_buff = USE_DOUBLE_BUFFER;
   matrix = new MatrixPanel_I2S_DMA(config);
   matrix->begin();
   matrix->setBrightness8(80); // Start conservatively with a 5 V / 4 A adapter.
