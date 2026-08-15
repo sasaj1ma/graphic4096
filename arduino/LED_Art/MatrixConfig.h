@@ -9,8 +9,24 @@ constexpr int kMatrixHeight = 64;
 // 1 で表裏 2 枚のバッファを使う。カクつきの切り分けで 0 にして比較する。
 #define USE_DOUBLE_BUFFER 1
 
-// 1 でクロックとリフレッシュ目標を既定より上げる。
-// 表示が出ない、滲むといった症状が出たら 0 にしてライブラリ既定へ戻す。
+// 右端の列が明るくなる、残像が残るといった症状は、ラッチ信号の前後で
+// OE(消灯)が足りていないために起きる。その期間を伸ばして消す。
+// ライブラリ既定は 2、上限は 4。上げるほど消えるが、わずかに暗くなる。
+#define LATCH_BLANKING 3
+
+// I2S クロック。ライブラリ既定は HZ_8M。
+// 上げるとパネルの走査回数が増えるが、上げすぎると配線長やパネルの個体差で
+// 滲みやゴーストが出る。右端が明るい症状はこれを上げすぎたときにも起きる。
+// 選べる値: HZ_8M / HZ_10M / HZ_15M / HZ_16M / HZ_20M
+#define I2S_CLOCK HUB75_I2S_CFG::HZ_10M
+
+// パネル走査回数の目標。既定 85。
+// 届かない分はライブラリが下位ビットの精度を削って合わせる。
+#define MIN_REFRESH_RATE 120
+
+// 1 で上の I2S_CLOCK と MIN_REFRESH_RATE を適用する。
+// 表示が出ないときは 0 にしてライブラリ既定へ戻す。
+// LATCH_BLANKING は症状への対処なので、こちらとは無関係に常に適用する。
 #define PANEL_TUNING 1
 
 // Match these GPIO numbers to the wires you connect to the HUB75 header.
@@ -137,9 +153,12 @@ inline void beginMatrix() {
   // クロックを上げすぎるとパネルや配線によっては表示が滲む、または出なくなる。
   // 表示が出ないときは PANEL_TUNING を 0 にしてライブラリ既定へ戻す。
 #if PANEL_TUNING
-  config.i2sspeed = HUB75_I2S_CFG::HZ_20M; // 既定より速い。滲む場合は HZ_15M へ
-  config.min_refresh_rate = 120;           // 既定は 85
+  config.i2sspeed = I2S_CLOCK;
+  config.min_refresh_rate = MIN_REFRESH_RATE;
 #endif
+
+  // 右端の列が明るくなる症状への対処。切り分け用の設定とは独立に効かせる。
+  config.latch_blanking = LATCH_BLANKING;
 
   // 表と裏の 2 枚を持ち、描き終わってから表に出す。
   // 1 枚だけだと DMA が走査している最中のバッファに書き込むことになり、
