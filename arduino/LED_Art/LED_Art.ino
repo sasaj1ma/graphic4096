@@ -2,7 +2,7 @@
 // Change ACTIVE_SKETCH, then upload this one file from Arduino IDE.
 // 1 = plasma, 2 = rain, 3 = portrait, 4 = approach, 5 = eye of sauron,
 // 6 = lissajous grid
-#define ACTIVE_SKETCH 1
+#define ACTIVE_SKETCH 6
 
 #include "MatrixConfig.h"
 #include "Plasma.h"
