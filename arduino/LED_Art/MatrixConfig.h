@@ -30,6 +30,23 @@ constexpr int kMatrixHeight = PANEL_HEIGHT;
 // 届かない分はライブラリが下位ビットの精度を削って合わせる。
 #define MIN_REFRESH_RATE 120
 
+// データを送るクロックの向き。ライブラリ既定は true。
+// これが合っていないと絵が横に 1 px ずれ、端の列に別の列の値が出る。
+// 右端が明るく、かつ絵が 1 px ずれて見えるなら false を試す。
+#define CLK_PHASE true
+
+// パネルのシフトレジスタ(ドライバ IC)の種類。ライブラリ既定は SHIFTREG。
+// 既定のままだと初期化が足りず、端の列が消えないパネルがある。
+// パネル裏の IC の型番を見て合わせる。刻印が読めなければ順に試す。
+// 選べる値:
+//   HUB75_I2S_CFG::SHIFTREG   汎用(既定)
+//   HUB75_I2S_CFG::FM6124
+//   HUB75_I2S_CFG::FM6126A    端の列が消えない症状の定番
+//   HUB75_I2S_CFG::ICN2038S
+//   HUB75_I2S_CFG::MBI5124
+//   HUB75_I2S_CFG::DP3246
+#define PANEL_DRIVER HUB75_I2S_CFG::SHIFTREG
+
 // 1 で上の I2S_CLOCK と MIN_REFRESH_RATE を適用する。
 // 表示が出ないときは 0 にしてライブラリ既定へ戻す。
 // LATCH_BLANKING は症状への対処なので、こちらとは無関係に常に適用する。
@@ -168,6 +185,8 @@ inline void beginMatrix() {
 
   // 右端の列が明るくなる症状への対処。切り分け用の設定とは独立に効かせる。
   config.latch_blanking = LATCH_BLANKING;
+  config.clkphase = CLK_PHASE;
+  config.driver = PANEL_DRIVER;
 
   // 表と裏の 2 枚を持ち、描き終わってから表に出す。
   // 1 枚だけだと DMA が走査している最中のバッファに書き込むことになり、

@@ -1,7 +1,7 @@
 // 64 x 64 HUB75 LED Art for Freenove ESP32-S3 Board Lite.
 // Change ACTIVE_SKETCH, then upload this one file from Arduino IDE.
 // 1 = plasma, 2 = rain, 3 = portrait, 4 = approach, 5 = eye of sauron,
-// 6 = lissajous grid
+// 6 = lissajous grid, 7 = test pattern (右端の症状の切り分け用)
 #define ACTIVE_SKETCH 1
 
 // 1 にすると、シリアルモニタ(115200)に fps とパネルの走査回数を出す。
@@ -16,6 +16,7 @@
 #include "Approach.h"
 #include "EyeOfSauron.h"
 #include "LissajousGrid.h"
+#include "TestPattern.h"
 
 void setup() {
   Serial.begin(115200);
@@ -43,8 +44,10 @@ void loop() {
   drawEyeOfSauron(time);
 #elif ACTIVE_SKETCH == 6
   drawLissajousGrid(time);
+#elif ACTIVE_SKETCH == 7
+  drawTestPattern(time);
 #else
-  #error "ACTIVE_SKETCH must be a number from 1 to 6."
+  #error "ACTIVE_SKETCH must be a number from 1 to 7."
 #endif
 
   const uint32_t drawUs = micros() - drawStartUs;

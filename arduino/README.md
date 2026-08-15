@@ -37,9 +37,13 @@ If the panel does not display cleanly, confirm the HUB75 header pinout and add a
 
 The switches for these are at the top of `LED_Art/MatrixConfig.h`. Change one at a time.
 
+Set `ACTIVE_SKETCH` to `7` first. That is a fixed test pattern which alternates every 3 seconds between an all-black screen and a screen with the left column red and the second-from-right column green, leaving the rightmost column black. Whether the right edge lights up on the black screen, or the green lands on the edge instead of beside it, separates a blanking fault from a one-pixel shift. The serial monitor names the phase as it changes.
+
 | Symptom | Setting | What to do |
 | --- | --- | --- |
 | The rightmost column stays bright, or ghosting trails appear | `LATCH_BLANKING` | Raise it. Library default is 2, maximum 4. Each step blanks OE for longer around the latch, at a slight cost in brightness. |
+| The rightmost column is still lit with the blanking at 4 | `PANEL_DRIVER` | Set it to the shift register on the back of the panel. `FM6126A` is the usual answer when an edge column will not go dark, because that chip needs an init sequence the default `SHIFTREG` never sends. |
+| The image sits one pixel to the side, so the edge column shows a neighbour's value | `CLK_PHASE` | Flip it to `false`. |
 | Ghosting remains after raising the blanking | `I2S_CLOCK` | Lower it. `HZ_8M` is the library default; a faster clock buys refresh rate but is harder on long wiring. |
 | The whole panel flickers | `MIN_REFRESH_RATE` | Raise it. The refresh rate is set by colour depth and clock alone, and no amount of drawing faster will change it. `Diagnostics.h` reports the rate the library actually reached. |
 | Nothing lights up at all | `PANEL_TUNING` | Set it to 0 to fall back to library defaults for clock and refresh. A failure in `matrix->begin()` is reported on the serial monitor. |
