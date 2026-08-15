@@ -1,36 +1,37 @@
 // 64 x 64 HUB75 LED Art for Freenove ESP32-S3 Board Lite.
 // Change ACTIVE_SKETCH, then upload this one file from Arduino IDE.
 // 1 = plasma, 2 = rain, 3 = portrait, 4 = approach, 5 = eye of sauron,
-// 6 = lissajous grid, 7 = test pattern (右端の症状の切り分け用)
-#define ACTIVE_SKETCH 7
-
-// 1 にすると、シリアルモニタ(115200)に fps とパネルの走査回数を出す。
-// 原因の切り分けが済んだら 0 に戻す。
-#define DIAGNOSTICS 1
+// 6 = lissajous grid
+#define ACTIVE_SKETCH 1
 
 #include "MatrixConfig.h"
-#include "Diagnostics.h"
 #include "Plasma.h"
 #include "Rain.h"
 #include "Portrait.h"
 #include "Approach.h"
 #include "EyeOfSauron.h"
 #include "LissajousGrid.h"
-#include "TestPattern.h"
+
+// 実測フレームレートを1秒ごとにシリアルへ出す。ブラウザとの体感差は
+// ほとんどここに出るので、まずこの数字を見る。
+#define REPORT_FPS 1
+
+static bool matrixReady = false;
 
 void setup() {
   Serial.begin(115200);
-  beginMatrix();
-#if DIAGNOSTICS
-  diagnostics::begin();
-#endif
+  matrixReady = beginMatrix();
 }
 
 void loop() {
-  constexpr uint32_t kFrameMs = 16; // approximately 60 fps
+  if (!matrixReady) {
+    Serial.println("matrix not initialised");
+    delay(2000);
+    return;
+  }
+
   const uint32_t frameStart = millis();
   const float time = frameStart / 1000.0f;
-  const uint32_t drawStartUs = micros();
 
 #if ACTIVE_SKETCH == 1
   drawPlasma(time);
@@ -44,26 +45,35 @@ void loop() {
   drawEyeOfSauron(time);
 #elif ACTIVE_SKETCH == 6
   drawLissajousGrid(time);
-#elif ACTIVE_SKETCH == 7
-  drawTestPattern(time);
 #else
-  #error "ACTIVE_SKETCH must be a number from 1 to 7."
+  #error "ACTIVE_SKETCH must be a number from 1 to 6."
 #endif
 
-  const uint32_t drawUs = micros() - drawStartUs;
-  const uint32_t flipStartUs = micros();
-  flipFrame(); // 描き上がった裏面を表に出す
-  const uint32_t flipUs = micros() - flipStartUs;
+  endFrame(); // 完成したフレームを表バッファへ入れ替える。
 
-#if DIAGNOSTICS
-  diagnostics::record(drawUs, flipUs);
-#else
-  (void)drawUs; (void)flipUs;
-#endif
-
-  // delay(16) を固定で入れると、実際のフレーム間隔は 16 ms + 描画時間になり、
-  // 描画が重いスケッチほど遅く、かつ間隔が不揃いになる。
-  // 描画にかかった分を差し引いて、上限を 60 fps に保つ。
+  // 旧コードは描画時間に 16 ms を「足して」いたので、描画に 150 ms かかる
+  // スケッチでは周期が 166 ms になっていた。目標周期から実描画時間を引く。
+  constexpr uint32_t kFramePeriodMs = 16; // 約 60 fps
   const uint32_t elapsed = millis() - frameStart;
-  if (elapsed < kFrameMs) delay(kFrameMs - elapsed);
+  if (elapsed < kFramePeriodMs) {
+    delay(kFramePeriodMs - elapsed);
+  }
+
+#if REPORT_FPS
+  static uint32_t frames = 0;
+  static uint32_t reportAt = 0;
+  static uint32_t busyMs = 0;
+  frames++;
+  busyMs += elapsed;
+  if (millis() >= reportAt) {
+    if (reportAt != 0) {
+      Serial.printf("sketch %d: %lu fps, draw %lu ms/frame\n",
+                    ACTIVE_SKETCH, (unsigned long)frames,
+                    (unsigned long)(frames ? busyMs / frames : 0));
+    }
+    frames = 0;
+    busyMs = 0;
+    reportAt = millis() + 1000;
+  }
+#endif
 }

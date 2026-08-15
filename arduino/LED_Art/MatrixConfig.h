@@ -3,54 +3,8 @@
 #include <Arduino.h>
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 
-#define PANEL_WIDTH  64
-#define PANEL_HEIGHT 64
-#define PANEL_CHAIN  1
-
-// スケッチ側はこちらを使う。寸法の出どころを 1 箇所にまとめ、
-// 片方だけ変えて食い違うのを防ぐ。
-constexpr int kMatrixWidth = PANEL_WIDTH;
-constexpr int kMatrixHeight = PANEL_HEIGHT;
-
-// --- パネルの設定 ---
-//
-// 既定ではここで何も指定しない。ライブラリの既定値のまま動かす。
-// もともとこのスケッチはパネル設定を一切していなかったので、それが
-// 実績のある状態にあたる。上下の半分が横にずれる症状は、下の値を
-// 既定から動かしたときに出たもので、0 のままなら再現しない。
-//
-// 触るときは PANEL_TUNING を 1 にして、値は一度に 1 つだけ変える。
-// 2 つ以上同時に変えると、どれが効いたのか分からなくなる。
-#define PANEL_TUNING 0
-
-#if PANEL_TUNING
-// I2S クロック。ライブラリ既定は HZ_8M。
-// 上げるとパネルの走査回数が増えるが、配線長やパネルの個体差によっては
-// タイミングが間に合わず、絵が横にずれる。
-// 選べる値: HZ_8M / HZ_10M / HZ_15M / HZ_16M / HZ_20M
-#define I2S_CLOCK HUB75_I2S_CFG::HZ_8M
-
-// パネル走査回数の目標。ライブラリ既定は 85。
-// 届かない分はライブラリが下位ビットの精度を削って合わせる。
-#define MIN_REFRESH_RATE 85
-
-// ラッチ信号の前後で OE(消灯)を保つクロック数。ライブラリ既定は 2、上限 4。
-// 消えるべき列が光る、残像が残るときに上げる。わずかに暗くなる。
-#define LATCH_BLANKING 2
-
-// データを送るクロックの向き。ライブラリ既定は true。
-// 合っていないと絵が横に 1 px ずれる。
-#define CLK_PHASE true
-
-// パネルのシフトレジスタ(ドライバ IC)の種類。ライブラリ既定は SHIFTREG。
-// 端の列がどうしても消えないパネルは FM6126A のことがある。
-// 選べる値: SHIFTREG / FM6124 / FM6126A / ICN2038S / MBI5124 / DP3246
-#define PANEL_DRIVER HUB75_I2S_CFG::SHIFTREG
-#endif
-
-// 1 で表裏 2 枚のバッファを使い、描き終わってから表に出す。
-// 0 がライブラリ既定。
-#define USE_DOUBLE_BUFFER 0
+constexpr int kMatrixWidth = 64;
+constexpr int kMatrixHeight = 64;
 
 // Match these GPIO numbers to the wires you connect to the HUB75 header.
 // GPIO 19/20 are deliberately unused: this keeps the ESP32-S3 native USB free.
@@ -71,6 +25,32 @@ constexpr int kMatrixHeight = PANEL_HEIGHT;
 #define LAT_PIN  15
 #define OE_PIN   16
 #define CLK_PIN  17
+
+#define PANEL_WIDTH  64
+#define PANEL_HEIGHT 64
+#define PANEL_CHAIN 1
+
+// ---- パネル個体差の調整ダイヤル ----------------------------------------
+// kClockPhase: データをクロックのどちらのエッジで取り込むか。右端(または左端)の
+//   1列だけ明るい・ゴーストが出る場合はここを反転させる。まずこれを試す。
+constexpr bool kClockPhase = false;
+
+// kLatchBlanking: LAT を切り替える前後で OE を何クロック分止めるか。1〜4。
+//   値を上げると列のにじみが消えるが、全体はわずかに暗くなる。
+//   kClockPhase の反転で直らないときに 3 → 4 と上げる。
+constexpr uint8_t kLatchBlanking = 2;
+
+// kDoubleBuffer: 表示中のバッファに直接描くと、描画途中の絵がそのまま出る。
+//   64x64 を毎フレーム全消し・全書き換えするこのスケッチ群では、これが
+//   ちらつきの正体。裏バッファに描いて完成後に入れ替える。
+constexpr bool kDoubleBuffer = true;
+
+// kBusSpeed: パネルのリフレッシュレート。ちらつきが残るなら HZ_16M。
+//   配線が長い・レベルシフタなしの場合は上げるとノイズが出ることがある。
+constexpr HUB75_I2S_CFG::clk_speed kBusSpeed = HUB75_I2S_CFG::HZ_10M;
+
+constexpr uint8_t kBrightness = 80;
+// -----------------------------------------------------------------------
 
 MatrixPanel_I2S_DMA* matrix = nullptr;
 
@@ -149,8 +129,7 @@ inline float noise3Exact(double x, double y = 0, double z = 0) {
 }
 
 inline Rgb paletteNeon(float value) {
-  // static がないと、1 フレームに 4096 回この表をスタックに作り直すことになる。
-  static const Rgb colors[] = {{9, 6, 25}, {75, 23, 135}, {205, 38, 147}, {50, 225, 186}, {241, 252, 83}};
+  const Rgb colors[] = {{9, 6, 25}, {75, 23, 135}, {205, 38, 147}, {50, 225, 186}, {241, 252, 83}};
   value = unitClamp(value) * 4.0f;
   const int left = min(3, static_cast<int>(floorf(value)));
   const float amount = value - left;
@@ -161,41 +140,27 @@ inline Rgb paletteNeon(float value) {
   );
 }
 
-inline void beginMatrix() {
+inline bool beginMatrix() {
   HUB75_I2S_CFG::i2s_pins pins = {R1_PIN, G1_PIN, B1_PIN, R2_PIN, G2_PIN, B2_PIN, A_PIN, B_PIN, C_PIN, D_PIN, E_PIN, LAT_PIN, OE_PIN, CLK_PIN};
-  HUB75_I2S_CFG config(PANEL_WIDTH, PANEL_HEIGHT, PANEL_CHAIN, pins);
+  HUB75_I2S_CFG config(kMatrixWidth, kMatrixHeight, PANEL_CHAIN, pins);
+  config.clkphase = kClockPhase;
+  config.latch_blanking = kLatchBlanking;
+  config.double_buff = kDoubleBuffer;
+  config.i2sspeed = kBusSpeed;
 
-  // PANEL_TUNING が 0 のときは config に一切触らない。
-  // ライブラリ既定のまま動き、パネルの挙動は元のスケッチと同じになる。
-#if PANEL_TUNING
-  config.i2sspeed = I2S_CLOCK;
-  config.min_refresh_rate = MIN_REFRESH_RATE;
-  config.latch_blanking = LATCH_BLANKING;
-  config.clkphase = CLK_PHASE;
-  config.driver = PANEL_DRIVER;
-#endif
-
-#if USE_DOUBLE_BUFFER
-  // 表と裏の 2 枚を持ち、描き終わってから表に出す。
-  config.double_buff = true;
-#endif
   matrix = new MatrixPanel_I2S_DMA(config);
-  // 確保に失敗すると以後どう描いても何も出ない。真っ暗なときの一次切り分け。
   if (!matrix->begin()) {
-    Serial.println(F("matrix->begin() に失敗。DMA バッファを確保できていない。"));
-    Serial.println(F("USE_DOUBLE_BUFFER か PANEL_TUNING を 0 にして試す。"));
+    // 戻り値を捨てると、DMA 確保に失敗しても黒画面のまま原因が分からない。
+    Serial.println("beginMatrix: begin() failed (DMA memory or pin config)");
+    return false;
   }
-  matrix->setBrightness8(80); // Start conservatively with a 5 V / 4 A adapter.
+  matrix->setBrightness8(kBrightness); // Start conservatively with a 5 V / 4 A adapter.
   matrix->clearScreen();
+  return true;
 }
 
-// 1 フレーム描き終わるたびに呼ぶ。裏で組み立てた絵を表に出す。
-// どのスケッチも毎フレーム全ピクセルを書くので、裏面の消し込みは要らない。
-//
-// ダブルバッファを使わない設定のときに flipDMABuffer() を呼んではいけない。
-// 裏面が存在しないまま表示先を切り替えることになり、画面が真っ暗になる。
-inline void flipFrame() {
-#if USE_DOUBLE_BUFFER
+// 1 フレーム描き終えたら呼ぶ。裏バッファを表に出す。
+// kDoubleBuffer が false のときは何もしない。
+inline void endFrame() {
   matrix->flipDMABuffer();
-#endif
 }
