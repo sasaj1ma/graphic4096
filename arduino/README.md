@@ -35,18 +35,32 @@ If the panel does not display cleanly, confirm the HUB75 header pinout and add a
 
 ## Panel symptoms
 
-The switches for these are at the top of `LED_Art/MatrixConfig.h`. Change one at a time.
+`MatrixConfig.h` ships with `PANEL_TUNING 0` and `USE_DOUBLE_BUFFER 0`, which
+leaves every panel setting at the library default. That is the configuration the
+sketch has always run on, so start there and change one thing at a time. Setting
+several at once makes it impossible to tell which one mattered — and a wrong
+clock or blanking value produces its own artefacts, so a bad guess adds a second
+fault on top of the one being chased.
 
-Set `ACTIVE_SKETCH` to `7` first. That is a fixed test pattern which alternates every 3 seconds between an all-black screen and a screen with the left column red and the second-from-right column green, leaving the rightmost column black. Whether the right edge lights up on the black screen, or the green lands on the edge instead of beside it, separates a blanking fault from a one-pixel shift. The serial monitor names the phase as it changes.
+Set `ACTIVE_SKETCH` to `7` to get the test pattern. It cycles every 4 seconds
+through an all-black screen, a every-fourth-column screen, and single columns at
+62 and 63. The top half of the panel is drawn red and the bottom half blue,
+because a 64x64 panel drives those halves over separate data lines (R1/G1/B1 and
+R2/G2/B2) and they can go out of step independently. Straight vertical lines with
+red directly above blue mean the two halves agree.
 
 | Symptom | Setting | What to do |
 | --- | --- | --- |
-| The rightmost column stays bright, or ghosting trails appear | `LATCH_BLANKING` | Raise it. Library default is 2, maximum 4. Each step blanks OE for longer around the latch, at a slight cost in brightness. |
-| The rightmost column is still lit with the blanking at 4 | `PANEL_DRIVER` | Set it to the shift register on the back of the panel. `FM6126A` is the usual answer when an edge column will not go dark, because that chip needs an init sequence the default `SHIFTREG` never sends. |
-| The image sits one pixel to the side, so the edge column shows a neighbour's value | `CLK_PHASE` | Flip it to `false`. |
-| Ghosting remains after raising the blanking | `I2S_CLOCK` | Lower it. `HZ_8M` is the library default; a faster clock buys refresh rate but is harder on long wiring. |
-| The whole panel flickers | `MIN_REFRESH_RATE` | Raise it. The refresh rate is set by colour depth and clock alone, and no amount of drawing faster will change it. `Diagnostics.h` reports the rate the library actually reached. |
-| Nothing lights up at all | `PANEL_TUNING` | Set it to 0 to fall back to library defaults for clock and refresh. A failure in `matrix->begin()` is reported on the serial monitor. |
+| Red and blue are offset horizontally, so a column splits at the middle | `PANEL_TUNING` | Set it to 0. A clock above the `HZ_8M` default is the usual cause: the data lines stop meeting setup time, and the two halves drift apart at the end of the row before they do anywhere else. |
+| A column that should be dark stays lit, or ghosting trails appear | `LATCH_BLANKING` | Raise it. Library default is 2, maximum 4. Each step blanks OE for longer around the latch, at a slight cost in brightness. |
+| An edge column will not go dark whatever the blanking | `PANEL_DRIVER` | Set it to the shift register printed on the back of the panel. `FM6126A` needs an init sequence the default `SHIFTREG` never sends. |
+| The image sits one pixel to the side across the whole panel | `CLK_PHASE` | Flip it to `false`. |
+| The whole panel flickers | `MIN_REFRESH_RATE` | Raise it. Refresh rate is set by colour depth and clock alone; drawing faster will not change it. `Diagnostics.h` reports the rate the library actually reached. |
+| Nothing lights up at all | `PANEL_TUNING` | Set it to 0. A failure in `matrix->begin()` is reported on the serial monitor. |
+
+If the defaults are in place and an artefact remains, it is wiring rather than
+configuration. Add a 74AHCT125/74AHCT245 level shifter, shorten the leads, and
+keep the R1/G1/B1 and R2/G2/B2 groups the same length as each other.
 
 ## Lissajous grid
 

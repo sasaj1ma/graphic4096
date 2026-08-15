@@ -55,8 +55,13 @@ inline void begin() {
   // CPU が 240 MHz でなければ、全てがその比率で遅くなる。
   Serial.printf("CPU         : %lu MHz\n", static_cast<unsigned long>(getCpuFrequencyMhz()));
   Serial.printf("色深度      : %d bit\n", PIXEL_COLOR_DEPTH_BITS);
-  // 右端が明るい症状に効く設定。上げても消えないならクロックを下げる。
-  Serial.printf("ラッチ消灯  : %d クロック (既定 2, 上限 4)\n", LATCH_BLANKING);
+  // パネル設定に手を入れているかどうか。既定のままかを最初に確かめる。
+#if PANEL_TUNING
+  Serial.println(F("パネル設定  : PANEL_TUNING=1 (ライブラリ既定から変更あり)"));
+#else
+  Serial.println(F("パネル設定  : ライブラリ既定のまま"));
+#endif
+  Serial.printf("ダブルバッファ: %s\n", USE_DOUBLE_BUFFER ? "有効" : "無効(既定)");
   Serial.printf("空きヒープ  : %lu バイト\n", static_cast<unsigned long>(ESP.getFreeHeap()));
   // ライブラリが実際に達成したパネル走査回数。
   Serial.printf("リフレッシュ: %d Hz\n", matrix->calculated_refresh_rate);

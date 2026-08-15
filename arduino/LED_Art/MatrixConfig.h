@@ -12,45 +12,45 @@
 constexpr int kMatrixWidth = PANEL_WIDTH;
 constexpr int kMatrixHeight = PANEL_HEIGHT;
 
-// 1 で表裏 2 枚のバッファを使う。カクつきの切り分けで 0 にして比較する。
-#define USE_DOUBLE_BUFFER 1
+// --- パネルの設定 ---
+//
+// 既定ではここで何も指定しない。ライブラリの既定値のまま動かす。
+// もともとこのスケッチはパネル設定を一切していなかったので、それが
+// 実績のある状態にあたる。上下の半分が横にずれる症状は、下の値を
+// 既定から動かしたときに出たもので、0 のままなら再現しない。
+//
+// 触るときは PANEL_TUNING を 1 にして、値は一度に 1 つだけ変える。
+// 2 つ以上同時に変えると、どれが効いたのか分からなくなる。
+#define PANEL_TUNING 0
 
-// 右端の列が明るくなる、残像が残るといった症状は、ラッチ信号の前後で
-// OE(消灯)が足りていないために起きる。その期間を伸ばして消す。
-// ライブラリ既定は 2、上限は 4。上げるほど消えるが、わずかに暗くなる。
-#define LATCH_BLANKING 3
-
+#if PANEL_TUNING
 // I2S クロック。ライブラリ既定は HZ_8M。
-// 上げるとパネルの走査回数が増えるが、上げすぎると配線長やパネルの個体差で
-// 滲みやゴーストが出る。右端が明るい症状はこれを上げすぎたときにも起きる。
+// 上げるとパネルの走査回数が増えるが、配線長やパネルの個体差によっては
+// タイミングが間に合わず、絵が横にずれる。
 // 選べる値: HZ_8M / HZ_10M / HZ_15M / HZ_16M / HZ_20M
-#define I2S_CLOCK HUB75_I2S_CFG::HZ_10M
+#define I2S_CLOCK HUB75_I2S_CFG::HZ_8M
 
-// パネル走査回数の目標。既定 85。
+// パネル走査回数の目標。ライブラリ既定は 85。
 // 届かない分はライブラリが下位ビットの精度を削って合わせる。
-#define MIN_REFRESH_RATE 120
+#define MIN_REFRESH_RATE 85
+
+// ラッチ信号の前後で OE(消灯)を保つクロック数。ライブラリ既定は 2、上限 4。
+// 消えるべき列が光る、残像が残るときに上げる。わずかに暗くなる。
+#define LATCH_BLANKING 2
 
 // データを送るクロックの向き。ライブラリ既定は true。
-// これが合っていないと絵が横に 1 px ずれ、端の列に別の列の値が出る。
-// 右端が明るく、かつ絵が 1 px ずれて見えるなら false を試す。
+// 合っていないと絵が横に 1 px ずれる。
 #define CLK_PHASE true
 
 // パネルのシフトレジスタ(ドライバ IC)の種類。ライブラリ既定は SHIFTREG。
-// 既定のままだと初期化が足りず、端の列が消えないパネルがある。
-// パネル裏の IC の型番を見て合わせる。刻印が読めなければ順に試す。
-// 選べる値:
-//   HUB75_I2S_CFG::SHIFTREG   汎用(既定)
-//   HUB75_I2S_CFG::FM6124
-//   HUB75_I2S_CFG::FM6126A    端の列が消えない症状の定番
-//   HUB75_I2S_CFG::ICN2038S
-//   HUB75_I2S_CFG::MBI5124
-//   HUB75_I2S_CFG::DP3246
+// 端の列がどうしても消えないパネルは FM6126A のことがある。
+// 選べる値: SHIFTREG / FM6124 / FM6126A / ICN2038S / MBI5124 / DP3246
 #define PANEL_DRIVER HUB75_I2S_CFG::SHIFTREG
+#endif
 
-// 1 で上の I2S_CLOCK と MIN_REFRESH_RATE を適用する。
-// 表示が出ないときは 0 にしてライブラリ既定へ戻す。
-// LATCH_BLANKING は症状への対処なので、こちらとは無関係に常に適用する。
-#define PANEL_TUNING 1
+// 1 で表裏 2 枚のバッファを使い、描き終わってから表に出す。
+// 0 がライブラリ既定。
+#define USE_DOUBLE_BUFFER 0
 
 // Match these GPIO numbers to the wires you connect to the HUB75 header.
 // GPIO 19/20 are deliberately unused: this keeps the ESP32-S3 native USB free.
@@ -165,35 +165,20 @@ inline void beginMatrix() {
   HUB75_I2S_CFG::i2s_pins pins = {R1_PIN, G1_PIN, B1_PIN, R2_PIN, G2_PIN, B2_PIN, A_PIN, B_PIN, C_PIN, D_PIN, E_PIN, LAT_PIN, OE_PIN, CLK_PIN};
   HUB75_I2S_CFG config(PANEL_WIDTH, PANEL_HEIGHT, PANEL_CHAIN, pins);
 
-  // --- ちらつき対策 ---
-  // パネルの走査回数(リフレッシュレート)は、スケッチのフレームレートとは
-  // 別物で、描画をいくら速くしても上がらない。決まるのはこの2つ。
-  //
-  // 64x64 を既定の 8 bit 色深度で回すと 20〜40 Hz 程度にしかならず、
-  // これが「かくかく」「ちらちら」の正体になっていることが多い。
-  // ライブラリは min_refresh_rate に届くよう下位ビットの精度を削って調整する。
-  //
-  // 実際に出た値は Diagnostics.h が calculated_refresh_rate として表示する。
-  // 100 Hz 以上あれば、ちらつきの原因はここではない。
-  //
-  // クロックを上げすぎるとパネルや配線によっては表示が滲む、または出なくなる。
-  // 表示が出ないときは PANEL_TUNING を 0 にしてライブラリ既定へ戻す。
+  // PANEL_TUNING が 0 のときは config に一切触らない。
+  // ライブラリ既定のまま動き、パネルの挙動は元のスケッチと同じになる。
 #if PANEL_TUNING
   config.i2sspeed = I2S_CLOCK;
   config.min_refresh_rate = MIN_REFRESH_RATE;
-#endif
-
-  // 右端の列が明るくなる症状への対処。切り分け用の設定とは独立に効かせる。
   config.latch_blanking = LATCH_BLANKING;
   config.clkphase = CLK_PHASE;
   config.driver = PANEL_DRIVER;
+#endif
 
+#if USE_DOUBLE_BUFFER
   // 表と裏の 2 枚を持ち、描き終わってから表に出す。
-  // 1 枚だけだと DMA が走査している最中のバッファに書き込むことになり、
-  // 描きかけの状態がそのまま見えてカクつきやちらつきの原因になる。
-  // メモリ不足で matrix->begin() が失敗する場合は 0 に戻す。
-  // 切り分けのため、0 と 1 を比べられるようにしてある。
-  config.double_buff = USE_DOUBLE_BUFFER;
+  config.double_buff = true;
+#endif
   matrix = new MatrixPanel_I2S_DMA(config);
   // 確保に失敗すると以後どう描いても何も出ない。真っ暗なときの一次切り分け。
   if (!matrix->begin()) {
