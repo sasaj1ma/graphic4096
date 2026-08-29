@@ -1,10 +1,10 @@
-// 白い図形をノイズで削り、見えたり見えなくなったりさせる薄膜。複数のスケッチが使う。
+// ノイズで図形を汚すための道具箱。複数のスケッチが使う。
 //
-// 図形は「濃さの地形」として受け取る。ノイズは地形に足すのではなく掛けて削るので、
-// 図形のない場所は削っても 0 のまま暗い。足し算にすると地のノイズまで一斉に光り出す。
-// しきい値を1本上下させるだけで、削り残った芯から順に現れて沈む。
+// この盤面での共通の掟がひとつある。ノイズは必ず図形の濃さに掛けること。
+// 足してしまうと図形のない場所まで一斉に光り、地が汚れる。掛けるかぎり、
+// 0 に何を掛けても 0 なので、地は黒いまま残る。
 //
-// 呼ぶ側は3つだけ:
+// createVeil はそのうちの1つ「削って明滅させる薄膜」をまとめたもの:
 //   setMask(mask, bloom) — 0/1 の 64×64。図形が変わったときだけ呼ぶ（重い）
 //   update(api, time, reveal) — 毎フレーム1回。reveal 1 で最もよく見える
 //   sample(x, y) — その画素の明るさ 0〜1
@@ -13,24 +13,72 @@ const SIZE = 64;
 const LOW = 17;               // 粗いノイズの格子。画素へは補間で伸ばす。
 const STEP = SIZE / (LOW - 1);
 
-const clampUnit = (value) => (value < 0 ? 0 : value > 1 ? 1 : value);
-const smoothstep = (edge0, edge1, value) => {
+const scratch = new Float32Array(SIZE * SIZE);
+
+export const clampUnit = (value) => (value < 0 ? 0 : value > 1 ? 1 : value);
+export const smoothstep = (edge0, edge1, value) => {
   const t = clampUnit((value - edge0) / (edge1 - edge0));
   return t * t * (3 - 2 * t);
 };
 
 // 画素ごとの粒。整数ハッシュなので三角関数を通らず、毎コマ全画素引いても軽い。
-function grainAt(x, y, frame) {
+// 3つの引数はどれも単なる種で、画素以外の用途（帯番号など）にも使える。
+export function grainAt(x, y, frame) {
   let hash = Math.imul(x + 1, 374761393) ^ Math.imul(y + 1, 668265263) ^ Math.imul(frame + 1, 1274126177);
   hash = Math.imul(hash ^ (hash >>> 13), 1274126177);
   return ((hash ^ (hash >>> 16)) >>> 0) / 4294967296;
+}
+
+// 平均化を縦横に1回ずつ。これを2度かけると、にじみがガウスに近い形になる。
+export function soften(buffer, radius) {
+  if (radius < 1) return;
+  const span = radius * 2 + 1;
+  for (let y = 0; y < SIZE; y += 1) {
+    for (let x = 0; x < SIZE; x += 1) {
+      let sum = 0;
+      for (let d = -radius; d <= radius; d += 1) {
+        const sx = x + d;
+        if (sx >= 0 && sx < SIZE) sum += buffer[y * SIZE + sx];
+      }
+      scratch[y * SIZE + x] = sum / span;
+    }
+  }
+  for (let x = 0; x < SIZE; x += 1) {
+    for (let y = 0; y < SIZE; y += 1) {
+      let sum = 0;
+      for (let d = -radius; d <= radius; d += 1) {
+        const sy = y + d;
+        if (sy >= 0 && sy < SIZE) sum += scratch[sy * SIZE + x];
+      }
+      buffer[y * SIZE + x] = sum / span;
+    }
+  }
+}
+
+// 最大値を 1 に戻す。にじみで下がった山を戻し、図形の大きさが変わっても濃さが揃う。
+export function normalize(buffer) {
+  let peak = 0;
+  for (let i = 0; i < buffer.length; i += 1) if (buffer[i] > peak) peak = buffer[i];
+  if (peak > 0) for (let i = 0; i < buffer.length; i += 1) buffer[i] /= peak;
+}
+
+// 場を実数座標で読む。盤面の外は 0 なので、ずらして読んでも地は暗いまま。
+export function sampleField(field, x, y) {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const tx = x - x0;
+  const ty = y - y0;
+  const at = (px, py) => (px < 0 || px >= SIZE || py < 0 || py >= SIZE ? 0 : field[py * SIZE + px]);
+  const top = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * tx;
+  const bottom = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * tx;
+  return top + (bottom - top) * ty;
 }
 
 export function createVeil(options = {}) {
   const {
     turbulence = 0.85, // ノイズが図形を削る深さ。0 にすると輪郭のまま出入りする。
     contrast = 1.6,    // ノイズの濃淡の開き。1 で素のまま、大きいほど斑がはっきり抜ける。
-    soft = 0.2,        // しきい値のまたぎ幅。大きいほど滲んだ発光になる。
+    edge = 0.2,        // しきい値のまたぎ幅。大きいほど滲んだ発光になる。
     halo = 0.35,       // 図形のまわりへ広がる光の強さ。0 にすると発光が消える。
     flicker = 0.3,     // 全体が明滅する深さ。見えたり見えなかったりの揺れ。
     grain = 0.3,       // 図形に乗る粒の強さ。
@@ -43,45 +91,11 @@ export function createVeil(options = {}) {
   // 字画を太らせずに光だけ広がる。
   const terrain = new Float32Array(SIZE * SIZE);
   const glow = new Float32Array(SIZE * SIZE);
-  const scratch = new Float32Array(SIZE * SIZE);
   const blotch = new Float32Array(LOW * LOW);
 
   let level = 1.4;
   let reveal = 0;
   let frame = 0;
-
-  // 平均化を縦横に1回ずつ。これを2度かけると、にじみがガウスに近い形になる。
-  function soften(buffer, radius) {
-    if (radius < 1) return;
-    const span = radius * 2 + 1;
-    for (let y = 0; y < SIZE; y += 1) {
-      for (let x = 0; x < SIZE; x += 1) {
-        let sum = 0;
-        for (let d = -radius; d <= radius; d += 1) {
-          const sx = x + d;
-          if (sx >= 0 && sx < SIZE) sum += buffer[y * SIZE + sx];
-        }
-        scratch[y * SIZE + x] = sum / span;
-      }
-    }
-    for (let x = 0; x < SIZE; x += 1) {
-      for (let y = 0; y < SIZE; y += 1) {
-        let sum = 0;
-        for (let d = -radius; d <= radius; d += 1) {
-          const sy = y + d;
-          if (sy >= 0 && sy < SIZE) sum += scratch[sy * SIZE + x];
-        }
-        buffer[y * SIZE + x] = sum / span;
-      }
-    }
-  }
-
-  // 最大値を 1 に戻す。にじみで下がった山を戻し、図形の大きさが変わっても濃さが揃う。
-  function normalize(buffer) {
-    let peak = 0;
-    for (let i = 0; i < buffer.length; i += 1) if (buffer[i] > peak) peak = buffer[i];
-    if (peak > 0) for (let i = 0; i < buffer.length; i += 1) buffer[i] /= peak;
-  }
 
   function blotchAt(x, y) {
     const fx = x / STEP;
@@ -144,7 +158,7 @@ export function createVeil(options = {}) {
       const cloud = blotchAt(x, y);
       // 図形の輪郭ではなく、削り残った高さがしきい値をまたぐ。
       const height = terrain[index] * (1 - turbulence * (1 - cloud));
-      const lit = smoothstep(level - soft, level + soft, height);
+      const lit = smoothstep(level - edge, level + edge, height);
 
       // 光の裾。芯と同じノイズで濃淡がつくので、にじみも一緒に息をする。
       const bloom = glow[index] * halo * reveal * (0.35 + 0.65 * cloud);
