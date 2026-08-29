@@ -22,17 +22,17 @@ const kUseLiveWeather = true; // false にすると kFallbackWeather の空に�
 const kForceWeather = null;   // 'sunny' | 'cloudy' | 'rainy' を入れると実況より優先（確認用）
 const kFallbackWeather = 'sunny'; // 取得に失敗したときの天気
 
-const kBirdCount = 175;     // 鳥の数。増やすほど群れが濃くなる
-const kMaxSpeed = 18;       // 最高速度（ピクセル/秒）
-const kMinSpeed = 9;        // 最低速度。止まらせないための下限
-const kMaxForce = 110;      // 1秒あたりの舵の強さ（加速度の上限）
-const kSeparation = 2.4;    // この距離まで近づくと離れようとする
-const kAlignment = 6.0;     // この距離までの仲間と向きを揃える
-const kCohesion = 13.0;     // この距離までの仲間の重心へ寄る
-const kRoostPull = 0.62;    // ねぐらへ戻る力。大きいほど群れが小さくまとまる
-const kSwirl = 26;          // ねぐらのまわりを回り込む力。渦と帯を作る
-const kHawkRadius = 12.0;   // ハヤブサから逃げ始める距離
-const kInk = 1.9;           // 鳥1羽が空を翳らせる強さ
+const kBirdCount = 260;     // 鳥の数。遠景では羽数を増やして粒を細かくする
+const kMaxSpeed = 6.5;      // 最高速度（ピクセル/秒）。64pxを渡るのに10秒以上かける
+const kMinSpeed = 2.6;      // 最低速度。止まらせないための下限
+const kMaxForce = 34;       // 1秒あたりの舵の強さ（加速度の上限）。小さいほど旋回が緩い
+const kSeparation = 2.5;    // この距離まで近づくと離れようとする
+const kAlignment = 5.0;     // この距離までの仲間と向きを揃える
+const kCohesion = 11.0;     // この距離までの仲間の重心へ寄る
+const kRoostPull = 0.17;    // ねぐらへ戻る力。大きいほど群れが小さくまとまる
+const kSwirl = 13;          // ねぐらのまわりを回り込む力。渦と帯を作る
+const kHawkRadius = 10.0;   // ハヤブサから逃げ始める距離
+const kInk = 1.8;           // 鳥1羽が空を翳らせる強さ
 const kMargin = 7;          // 画面端に近づくと内側へ押し戻す幅
 const kStarCount = 44;      // 夜空の星の数
 
@@ -202,12 +202,21 @@ function limit(x, y, max) {
 }
 
 // 鳥は1ピクセルにぴったり乗らないので、周囲4画素へ重みを分けて置く。
-// これで群れの輪郭が階段状にならず、密度の濃淡が滑らかに出る。
+// これで動きが階段状にならず、密度の濃淡が滑らかに出る。
+//
+// ただし重みをそのまま線形で配ると、1羽が4画素へ薄く溶けて霞になる。
+// 遠くの鳥は点として写るので、smoothstep を2回かけて重みを
+// いちばん近い画素へ寄せ、粒を立たせている。
+const sharpen = (value) => {
+  const once = value * value * (3 - 2 * value);
+  return once * once * (3 - 2 * once);
+};
+
 function splat(api, x, y, amount) {
   const x0 = Math.floor(x);
   const y0 = Math.floor(y);
-  const fx = x - x0;
-  const fy = y - y0;
+  const fx = sharpen(x - x0);
+  const fy = sharpen(y - y0);
   for (let dy = 0; dy <= 1; dy += 1) {
     for (let dx = 0; dx <= 1; dx += 1) {
       const px = x0 + dx;
@@ -287,23 +296,23 @@ export function draw(api) {
   // -----------------------------
   //
   // 昼は高く、夜は低く飛ぶ。8の字の軌道は中央を離れすぎない。
-  const roostX = api.width * 0.5 + Math.sin(time * 0.19) * 12
-    + Math.sin(time * 0.07 + 0.6) * 4;
-  const roostY = api.height * (0.55 - sun * 0.13) + Math.sin(time * 0.27 + 1.3) * 8
-    + Math.cos(time * 0.11) * 4;
+  const roostX = api.width * 0.5 + Math.sin(time * 0.062) * 9
+    + Math.sin(time * 0.023 + 0.6) * 3;
+  const roostY = api.height * (0.56 - sun * 0.10) + Math.sin(time * 0.089 + 1.3) * 6
+    + Math.cos(time * 0.037) * 3;
 
   // 群れが最も荒れるのは朝夕。真昼と真夜中は落ち着く。
   // 実際の椋鳥も、ねぐら入り前の薄暮にいちばん大きな群れを作る。
   const activity = 0.72 + (1 - Math.abs(sun)) * 0.5;
-  const gust = 1 + windiness * 0.55 + rainfall * 0.35;
+  const gust = 1 + windiness * 0.35 + rainfall * 0.25;
   const maxSpeed = kMaxSpeed * activity * gust;
   const minSpeed = kMinSpeed * activity;
 
-  const swirl = Math.sin(time * 0.23) * 0.7 + Math.sin(time * 0.09 + 2.1) * 0.4;
+  const swirl = Math.sin(time * 0.08) * 0.7 + Math.sin(time * 0.031 + 2.1) * 0.4;
 
   // ハヤブサ。周期の違う2つの sin で画面を横切る。
-  const hawkX = api.width * (0.5 + Math.sin(time * 0.41) * 0.55);
-  const hawkY = api.height * (0.5 + Math.sin(time * 0.29 + 1.7) * 0.5);
+  const hawkX = api.width * (0.5 + Math.sin(time * 0.13) * 0.55);
+  const hawkY = api.height * (0.5 + Math.sin(time * 0.095 + 1.7) * 0.5);
 
   const separationSquared = kSeparation * kSeparation;
   const alignmentSquared = kAlignment * kAlignment;
@@ -373,8 +382,8 @@ export function draw(api) {
       const toX = centerX / centerCount - birdX[i];
       const toY = centerY / centerCount - birdY[i];
       const [steerX, steerY] = limit(toX * 3.2, toY * 3.2, kMaxForce);
-      accelX += steerX * 1.4;
-      accelY += steerY * 1.4;
+      accelX += steerX * 0.75;
+      accelY += steerY * 0.75;
     }
 
     // ねぐらへの引力。遠いほど強い。群れが散り切るのを防ぐ。
@@ -394,7 +403,7 @@ export function draw(api) {
     const hawkDY = birdY[i] - hawkY;
     const hawkDistance = Math.hypot(hawkDX, hawkDY);
     if (hawkDistance < kHawkRadius) {
-      const strength = (1 - hawkDistance / kHawkRadius) ** 2 * 420;
+      const strength = (1 - hawkDistance / kHawkRadius) ** 2 * 110;
       accelX += (hawkDX / (hawkDistance + 0.001)) * strength;
       accelY += (hawkDY / (hawkDistance + 0.001)) * strength;
     }
@@ -406,11 +415,14 @@ export function draw(api) {
     if (birdY[i] > api.height - kMargin) accelY -= (birdY[i] - (api.height - kMargin)) * 18;
 
     // ゆらぎ。全員が同じ判断をして結晶化するのを崩す。
-    // 荒天ほど大きく揺れる。
-    const wander = api.noise(birdX[i] * 0.08, birdY[i] * 0.08, time * 0.6 + i * 0.01) - 0.5;
-    const turbulence = 14 * (1 + cloudiness * 0.5 + rainfall * 1.4 + windiness * 0.6);
-    accelX += Math.cos(wander * 9) * turbulence;
-    accelY += Math.sin(wander * 9) * turbulence;
+    //
+    // 1羽ごとに違う乱数を与えると、羽虫のように毎フレーム向きがバタつく。
+    // そうではなく、空間にゆっくり流れる場を1枚敷き、近くの鳥は同じ風を受ける。
+    // 場の変化を遅くする（time * 0.05）ほど、遠くの群れらしい落ち着きが出る。
+    const flowAngle = api.noise(birdX[i] * 0.035, birdY[i] * 0.035, time * 0.05) * Math.PI * 4;
+    const turbulence = 4.2 * (1 + cloudiness * 0.4 + rainfall * 1.2 + windiness * 0.6);
+    accelX += Math.cos(flowAngle) * turbulence;
+    accelY += Math.sin(flowAngle) * turbulence;
 
     velocityX[i] += accelX * dt;
     velocityY[i] += accelY * dt;
