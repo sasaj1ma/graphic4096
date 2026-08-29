@@ -1,37 +1,20 @@
-import { GLYPH_H, textBit } from '../src/font5x7.js';
+import { createVeil } from '../src/noise-veil.js';
 
 // 64×64 で COYS（Come On You Spurs）を掲げる応援用のスケッチ。
-// source: 濃紺の地に紫（Paxton Purple）で大きくチャントを敷き詰め、その上に白いワードマーク。
-// rule: 背景は流れ続け、前景は動かない。奥は騒ぎ、手前の看板は動かない。
-// exception: 一定の拍で1行だけが明るく灯り、その行が拍ごとに下へ送られる（手拍子の波）。
-// 書体はクラブのワードマークに寄せた自作のドット絵。紋章も同じく描き起こし。
+// source: クラブの紋章とワードマーク。黒地に白の2値だけで組む。
+// rule: 紋章とワードマークは置き場所を動かさない。動くのはノイズのほうで、
+//       白い図形を削っては返し、見えたり見えなくなったりさせる。
+// exception: 拍ごとに図形が持ち直す。削られては手拍子で戻る、の繰り返しになる。
+//
+// 侵食そのものは src/noise-veil.js が持つ。ここは図形を組んで渡すだけ。
 
-const NAVY = [12, 16, 62];        // 地
-const PURPLE = [86, 46, 180];     // チャントの紫
-const PURPLE_DIM = [56, 30, 132]; // 1行おきに落とす紫。奥行きが出る。
-const PURPLE_HOT = [140, 92, 240]; // 拍で灯る行の紫
-const WHITE = [255, 255, 255];
+const TINT = [255, 255, 255];
+const BEAT = 0.6;    // 秒。手拍子の間隔。
+const BASE = 0.7;    // 拍と拍の間の見え方。下げるほどノイズに食われる。
+const SURGE = 0.3;   // 拍で持ち直す量。0 にすると拍が消えてノイズだけになる。
+const BLOOM = 3;     // 図形のまわりへ光がにじむ半径。
 
-const BEAT = 0.55;      // 秒。手拍子の間隔。
-const CHANT_SCALE = 2;  // チャントの倍率。2 で 10×14px。実物の大きな見出し組に寄せる。
-const CHANT_GAP = 2;    // チャントの字間（px）
-const BAND = GLYPH_H * CHANT_SCALE; // 1行の高さ
-const PITCH = BAND + 1; // 行の送り。1px しか空けず、実物のように行を詰める。
-const TOP = -6;         // 1行目の上端。負にして、上下を切り落とす。
-const SLANT = 0.25;     // チャントの斜体。実物の傾きは約13度で、これはその接線。
 const MARK_SLANT = 0.28; // ワードマークの斜体。SPURS のロゴに合わせて深めに倒す。
-
-// 流す言葉と速さ（px/秒）。符号が向き。行ごとに変えると層が分かれて見える。
-// 元絵から読み取った文句を並べている。3行目だけは SPURS に隠れて読めなかったので、
-// 別のチャントで埋めた（左端に「(T)HE」、右端に「GO…」だけが見えている）。
-// ここに足すか消すかで行数が変わる。1行 15px なので5行が収まる。
-const CHANTS = [
-  { text: 'WHITE HART LANE  ', speed: 6 },
-  { text: 'PREMIER LEAGUE  ', speed: -5 },
-  { text: 'COME ON YOU SPURS  ', speed: 8 },
-  { text: 'AUDERE EST FACERE  ', speed: -6 },
-  { text: 'HEART SOUL  ', speed: 7 }
-];
 
 // COYS の4文字。12×18 のドット絵。
 // 縦画は3px、横画は1pxまで落とす。この差が大きいほど SPURS の書体に近づく。
@@ -169,14 +152,12 @@ const STACK_GAP = 2; // 紋章とワードマークの間
 const MARK_W = WORDMARK[0][0].length;
 const MARK_H = WORDMARK[0].length;
 
-// 前景は動かないので、置き場所は一度だけ焼いておく。
-// 2 = 白い字画、1 = そのまわり1pxの縁。縁は地の色で抜き、紫の上でも字が立つ。
-const INK = 2;
-const EDGE = 1;
-const mark = new Uint8Array(64 * 64);
+// 図形は動かないので、置き場所は起動時に一度だけ焼く。
+const mask = new Uint8Array(64 * 64);
+const veil = createVeil();
 
 function plot(x, y) {
-  if (x >= 0 && x < 64 && y >= 0 && y < 64) mark[y * 64 + x] = INK;
+  if (x >= 0 && x < 64 && y >= 0 && y < 64) mask[y * 64 + x] = 1;
 }
 
 // ドット絵を1枚置く。slant が 0 でなければ、下の行ほど左へ寄せて斜体にする。
@@ -204,23 +185,7 @@ function buildMark() {
     stamp(WORDMARK[i], left + i * (MARK_W + MARK_GAP), top + crestHeight + STACK_GAP, MARK_SLANT);
   }
 
-  // 字画のまわり1pxを縁に立てる。字画そのものは塗り替えない。
-  const solid = mark.slice();
-  for (let y = 0; y < 64; y += 1) {
-    for (let x = 0; x < 64; x += 1) {
-      if (solid[y * 64 + x] === INK) continue;
-      let touching = false;
-      for (let dy = -1; dy <= 1 && !touching; dy += 1) {
-        for (let dx = -1; dx <= 1; dx += 1) {
-          const sx = x + dx;
-          const sy = y + dy;
-          if (sx < 0 || sx >= 64 || sy < 0 || sy >= 64) continue;
-          if (solid[sy * 64 + sx] === INK) { touching = true; break; }
-        }
-      }
-      if (touching) mark[y * 64 + x] = EDGE;
-    }
-  }
+  veil.setMask(mask, BLOOM);
 }
 
 buildMark();
@@ -228,43 +193,14 @@ buildMark();
 export function draw(api) {
   const time = api.time();
 
-  // 拍。叩いた瞬間が 1 で、すぐ減衰する。
-  const beat = (time % BEAT) / BEAT;
-  const pulse = Math.exp(-beat * 5);
-  // 灯る行は拍ごとに1つ下へ送る。手拍子が波になって降りていく。
-  const hot = Math.floor(time / BEAT) % CHANTS.length;
+  // 拍。叩いた瞬間が 1 で、すぐ減衰する。図形はここで持ち直し、間で食われる。
+  const kick = Math.exp(-((time % BEAT) / BEAT) * 4);
+  veil.update(api, time, BASE + SURGE * kick);
 
   for (let y = 0; y < 64; y += 1) {
-    // この画素がどのチャント行の何行目にあたるか。
-    const band = Math.floor((y - TOP) / PITCH);
-    const inner = y - TOP - band * PITCH;
-    const chant = band >= 0 && band < CHANTS.length && inner < BAND ? CHANTS[band] : null;
-
-    // 斜体。上の行ほど右へ出るので、読み取り位置は左へ戻す。
-    const lean = chant ? Math.round((BAND - 1 - inner) * SLANT) : 0;
-    const scroll = chant ? Math.round(chant.speed * time) : 0;
-
-    // 1行おきに紫を落とす。灯る行だけ拍で明るくなる。
-    let tone = band % 2 === 0 ? PURPLE : PURPLE_DIM;
-    if (chant && band === hot) {
-      tone = [
-        tone[0] + (PURPLE_HOT[0] - tone[0]) * pulse,
-        tone[1] + (PURPLE_HOT[1] - tone[1]) * pulse,
-        tone[2] + (PURPLE_HOT[2] - tone[2]) * pulse
-      ];
-    }
-
     for (let x = 0; x < 64; x += 1) {
-      let color = NAVY;
-
-      if (chant && textBit(chant.text, x - lean + scroll, inner, CHANT_SCALE, CHANT_GAP)) color = tone;
-
-      // 前景は最後に置く。縁で地の色に戻してから、字画を白で抜く。
-      const stencil = mark[y * 64 + x];
-      if (stencil === EDGE) color = NAVY;
-      else if (stencil === INK) color = WHITE;
-
-      api.pixel(x, y, api.rgb(color[0], color[1], color[2]));
+      const value = veil.sample(x, y);
+      api.pixel(x, y, api.rgb(TINT[0] * value, TINT[1] * value, TINT[2] * value));
     }
   }
 }
