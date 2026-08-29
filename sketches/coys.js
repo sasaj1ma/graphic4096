@@ -1,7 +1,7 @@
 import { GLYPH_H, textBit } from '../src/font5x7.js';
 
 // 64×64 で COYS（Come On You Spurs）を掲げる応援用のスケッチ。
-// source: 濃紺の地に紫でチャントを敷き詰め、その上に白いイタリック・セリフのワードマーク。
+// source: 濃紺の地に紫（Paxton Purple）で大きくチャントを敷き詰め、その上に白いワードマーク。
 // rule: 背景は流れ続け、前景は動かない。奥は騒ぎ、手前の看板は動かない。
 // exception: 一定の拍で1行だけが明るく灯り、その行が拍ごとに下へ送られる（手拍子の波）。
 // 書体はクラブのワードマークに寄せた自作のドット絵。紋章も同じく描き起こし。
@@ -13,21 +13,24 @@ const PURPLE_HOT = [140, 92, 240]; // 拍で灯る行の紫
 const WHITE = [255, 255, 255];
 
 const BEAT = 0.55;      // 秒。手拍子の間隔。
-const PITCH = 11;       // チャント1行の送り（px）
-const TOP = -4;         // 1行目の上端。負にして、上下を切り落とす。
-const SLANT = 0.5;      // チャントの斜体。1行あたり右へずらす量。
+const CHANT_SCALE = 2;  // チャントの倍率。2 で 10×14px。実物の大きな見出し組に寄せる。
+const CHANT_GAP = 2;    // チャントの字間（px）
+const BAND = GLYPH_H * CHANT_SCALE; // 1行の高さ
+const PITCH = BAND + 1; // 行の送り。1px しか空けず、実物のように行を詰める。
+const TOP = -6;         // 1行目の上端。負にして、上下を切り落とす。
+const SLANT = 0.25;     // チャントの斜体。実物の傾きは約13度で、これはその接線。
 const MARK_SLANT = 0.28; // ワードマークの斜体。SPURS のロゴに合わせて深めに倒す。
 
 // 流す言葉と速さ（px/秒）。符号が向き。行ごとに変えると層が分かれて見える。
-// ここに足すか消すかで行数が変わる。1行 11px なので6〜7行が収まる。
+// 元絵から読み取った文句を並べている。3行目だけは SPURS に隠れて読めなかったので、
+// 別のチャントで埋めた（左端に「(T)HE」、右端に「GO…」だけが見えている）。
+// ここに足すか消すかで行数が変わる。1行 15px なので5行が収まる。
 const CHANTS = [
-  { text: 'COME ON YOU SPURS - ', speed: 7 },
-  { text: 'WHITE HART LANE - ', speed: -5 },
-  { text: 'AUDERE EST FACERE - ', speed: 9 },
-  { text: 'TO DARE IS TO DO - ', speed: -6 },
-  { text: 'GLORY GLORY - ', speed: 8 },
-  { text: 'PREMIER LEAGUE - ', speed: -4 },
-  { text: 'N17 - SPURS - ', speed: 6 }
+  { text: 'WHITE HART LANE  ', speed: 6 },
+  { text: 'PREMIER LEAGUE  ', speed: -5 },
+  { text: 'COME ON YOU SPURS  ', speed: 8 },
+  { text: 'AUDERE EST FACERE  ', speed: -6 },
+  { text: 'HEART SOUL  ', speed: 7 }
 ];
 
 // COYS の4文字。12×18 のドット絵。
@@ -235,10 +238,10 @@ export function draw(api) {
     // この画素がどのチャント行の何行目にあたるか。
     const band = Math.floor((y - TOP) / PITCH);
     const inner = y - TOP - band * PITCH;
-    const chant = band >= 0 && band < CHANTS.length && inner < GLYPH_H ? CHANTS[band] : null;
+    const chant = band >= 0 && band < CHANTS.length && inner < BAND ? CHANTS[band] : null;
 
     // 斜体。上の行ほど右へ出るので、読み取り位置は左へ戻す。
-    const lean = chant ? Math.round((GLYPH_H - 1 - inner) * SLANT) : 0;
+    const lean = chant ? Math.round((BAND - 1 - inner) * SLANT) : 0;
     const scroll = chant ? Math.round(chant.speed * time) : 0;
 
     // 1行おきに紫を落とす。灯る行だけ拍で明るくなる。
@@ -254,7 +257,7 @@ export function draw(api) {
     for (let x = 0; x < 64; x += 1) {
       let color = NAVY;
 
-      if (chant && textBit(chant.text, x - lean + scroll, inner)) color = tone;
+      if (chant && textBit(chant.text, x - lean + scroll, inner, CHANT_SCALE, CHANT_GAP)) color = tone;
 
       // 前景は最後に置く。縁で地の色に戻してから、字画を白で抜く。
       const stencil = mark[y * 64 + x];
