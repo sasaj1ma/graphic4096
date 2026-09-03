@@ -21,6 +21,8 @@
 
 メニューの `image preview` は `public/images/images-1.jpeg` を64×64へ縮小して表示します。別の画像を試すには、このファイルを同名で差し替えます。縦横比が異なる画像は中央を正方形にトリミングします。
 
+写真はそのままだとLED上で暗く沈むため、読み込み時にレベル補正・ガンマ・彩度で明るさを整えています。効き具合は `sketches/image-preview.js` 冒頭の4つの定数（`kBlackPoint` / `kWhitePoint` / `kGamma` / `kSaturation`）で調整できます。暗さに一番効くのは `kGamma` で、値を下げるほど明るくなります。
+
 ## スケッチ例
 
 - `approach` — 消失点から抽象物が前景へ迫る、鮮やかな色面のスケッチ

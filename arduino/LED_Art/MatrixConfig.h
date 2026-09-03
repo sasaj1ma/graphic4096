@@ -8,20 +8,49 @@ constexpr int kMatrixHeight = 64;
 
 // Match these GPIO numbers to the wires you connect to the HUB75 header.
 // GPIO 19/20 are deliberately unused: this keeps the ESP32-S3 native USB free.
-#define R1_PIN 1
-#define G1_PIN 2
-#define B1_PIN 3
-#define R2_PIN 4
-#define G2_PIN 5
-#define B2_PIN 6
-#define A_PIN 7
-#define B_PIN 8
-#define C_PIN 9
-#define D_PIN 10
-#define E_PIN 11
-#define LAT_PIN 12
-#define OE_PIN 13
-#define CLK_PIN 14
+#define R1_PIN   4
+#define G1_PIN   5
+#define B1_PIN   6
+
+#define R2_PIN   7
+#define G2_PIN   8
+#define B2_PIN   9
+
+#define A_PIN    10
+#define B_PIN    11
+#define C_PIN    12
+#define D_PIN    13
+#define E_PIN    14
+
+#define LAT_PIN  15
+#define OE_PIN   16
+#define CLK_PIN  17
+
+#define PANEL_WIDTH  64
+#define PANEL_HEIGHT 64
+#define PANEL_CHAIN 1
+
+// ---- パネル個体差の調整ダイヤル ----------------------------------------
+// kClockPhase: データをクロックのどちらのエッジで取り込むか。右端(または左端)の
+//   1列だけ明るい・ゴーストが出る場合はここを反転させる。まずこれを試す。
+constexpr bool kClockPhase = false;
+
+// kLatchBlanking: LAT を切り替える前後で OE を何クロック分止めるか。1〜4。
+//   値を上げると列のにじみが消えるが、全体はわずかに暗くなる。
+//   kClockPhase の反転で直らないときに 3 → 4 と上げる。
+constexpr uint8_t kLatchBlanking = 2;
+
+// kDoubleBuffer: 表示中のバッファに直接描くと、描画途中の絵がそのまま出る。
+//   64x64 を毎フレーム全消し・全書き換えするこのスケッチ群では、これが
+//   ちらつきの正体。裏バッファに描いて完成後に入れ替える。
+constexpr bool kDoubleBuffer = true;
+
+// kBusSpeed: パネルのリフレッシュレート。ちらつきが残るなら HZ_16M。
+//   配線が長い・レベルシフタなしの場合は上げるとノイズが出ることがある。
+constexpr HUB75_I2S_CFG::clk_speed kBusSpeed = HUB75_I2S_CFG::HZ_10M;
+
+constexpr uint8_t kBrightness = 80;
+// -----------------------------------------------------------------------
 
 MatrixPanel_I2S_DMA* matrix = nullptr;
 
@@ -111,11 +140,29 @@ inline Rgb paletteNeon(float value) {
   );
 }
 
-inline void beginMatrix() {
+inline bool beginMatrix() {
   HUB75_I2S_CFG::i2s_pins pins = {R1_PIN, G1_PIN, B1_PIN, R2_PIN, G2_PIN, B2_PIN, A_PIN, B_PIN, C_PIN, D_PIN, E_PIN, LAT_PIN, OE_PIN, CLK_PIN};
-  HUB75_I2S_CFG config(kMatrixWidth, kMatrixHeight, 1, pins);
+  HUB75_I2S_CFG config(kMatrixWidth, kMatrixHeight, PANEL_CHAIN, pins);
+  config.clkphase = kClockPhase;
+  config.latch_blanking = kLatchBlanking;
+  config.double_buff = kDoubleBuffer;
+  config.i2sspeed = kBusSpeed;
+
   matrix = new MatrixPanel_I2S_DMA(config);
-  matrix->begin();
-  matrix->setBrightness8(80); // Start conservatively with a 5 V / 4 A adapter.
+  if (!matrix->begin()) {
+    // 戻り値を捨てると、DMA 確保に失敗しても黒画面のまま原因が分からない。
+    Serial.println("beginMatrix: begin() failed (DMA memory or pin config)");
+    return false;
+  }
+  matrix->setBrightness8(kBrightness); // Start conservatively with a 5 V / 4 A adapter.
   matrix->clearScreen();
+  return true;
+}
+
+// 1 フレーム描き終えたら呼ぶ。裏バッファを表に出す。
+// kDoubleBuffer が false のときは何もしない。裏バッファが無いまま
+// 表示先を切り替えると画面が真っ暗になるため、ここで止める必要がある。
+inline void endFrame() {
+  if (!kDoubleBuffer) return;
+  matrix->flipDMABuffer();
 }
