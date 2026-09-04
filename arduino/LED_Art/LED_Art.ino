@@ -1,8 +1,8 @@
 // 64 x 64 HUB75 LED Art for Freenove ESP32-S3 Board Lite.
 // Change ACTIVE_SKETCH, then upload this one file from Arduino IDE.
 // 1 = plasma, 2 = rain, 3 = portrait, 4 = approach, 5 = eye of sauron,
-// 6 = lissajous grid
-#define ACTIVE_SKETCH 6
+// 6 = lissajous grid, 7 = test pattern, 8 = message board, 9 = coys
+#define ACTIVE_SKETCH 8
 
 #include "MatrixConfig.h"
 #include "Plasma.h"
@@ -11,6 +11,9 @@
 #include "Approach.h"
 #include "EyeOfSauron.h"
 #include "LissajousGrid.h"
+#include "TestPattern.h"
+#include "MessageBoard.h"
+#include "Coys.h"
 
 // 実測フレームレートを1秒ごとにシリアルへ出す。ブラウザとの体感差は
 // ほとんどここに出るので、まずこの数字を見る。
@@ -69,8 +72,14 @@ void loop() {
   drawEyeOfSauron(time);
 #elif ACTIVE_SKETCH == 6
   drawLissajousGrid(time);
+#elif ACTIVE_SKETCH == 7
+  drawTestPattern(time);
+#elif ACTIVE_SKETCH == 8
+  drawMessageBoard(time);
+#elif ACTIVE_SKETCH == 9
+  drawCoys(time);
 #else
-  #error "ACTIVE_SKETCH must be a number from 1 to 6."
+  #error "ACTIVE_SKETCH must be a number from 1 to 9."
 #endif
 
   // 描画とフリップを分けて測る。flipDMABuffer() は表示中のバッファが

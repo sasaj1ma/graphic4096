@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bake message board</title>
+    <style>
+      body { margin: 0; padding: 32px; background: #0b0c10; color: #e8e8ef; font: 14px/1.6 ui-monospace, monospace; }
+      h1 { font-size: 16px; letter-spacing: 0.08em; text-transform: uppercase; color: #9c9cb4; }
+      p { max-width: 60ch; color: #b9b9c9; }
+      button { font: inherit; padding: 8px 16px; border: 1px solid #4a3f6b; border-radius: 4px; background: #1a1526; color: #d9c9ff; cursor: pointer; }
+      pre { max-height: 50vh; overflow: auto; padding: 16px; border: 1px solid #23242c; border-radius: 4px; background: #05060a; color: #8d8da4; font-size: 12px; }
+      code { color: #d9c9ff; }
+    </style>
+  </head>
+  <body>
+    <h1>Bake message board</h1>
+    <p>
+      <code>sketches/message-board.js</code> の <code>SETTINGS</code> を実機用のヘッダに焼きます。
+      保存したファイルを <code>arduino/LED_Art/MessageBoardData.h</code> に置き換えてください。
+      ことばや文字の大きさを変えたら、毎回ここで焼き直します。
+    </p>
+    <p id="summary">焼いています…</p>
+    <p><button id="save" disabled>MessageBoardData.h を保存</button></p>
+    <pre id="preview"></pre>
+
+    <script type="module">
+      import { buildStrip } from '/src/jp-strip.js';
+      import { SETTINGS } from '/sketches/message-board.js';
+      import { emitHeader } from '/work/bake-message-board.js';
+
+      // フォントが揃う前に測ると字幅がずれるので、待ってから焼く。
+      await document.fonts.ready;
+
+      const strip = buildStrip(SETTINGS);
+      const header = emitHeader(strip, SETTINGS);
+
+      document.querySelector('#summary').textContent =
+        `帯 ${strip.width} x ${strip.height} px / ヘッダ ${(header.length / 1024).toFixed(1)} KB`;
+      document.querySelector('#preview').textContent = header;
+
+      const save = document.querySelector('#save');
+      save.disabled = false;
+      save.addEventListener('click', () => {
+        const url = URL.createObjectURL(new Blob([header], { type: 'text/plain' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'MessageBoardData.h';
+        link.click();
+        URL.revokeObjectURL(url);
+      });
+    </script>
+  </body>
+</html>

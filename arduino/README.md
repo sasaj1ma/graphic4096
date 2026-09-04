@@ -1,6 +1,6 @@
 # ESP32-S3 HUB75 LED Art
 
-This is the Arduino version of the browser sketches. Open `LED_Art/LED_Art.ino` in Arduino IDE, set `ACTIVE_SKETCH` to a number from 1 to 6, and upload.
+This is the Arduino version of the browser sketches. Open `LED_Art/LED_Art.ino` in Arduino IDE, set `ACTIVE_SKETCH` to a number from 1 to 9, and upload.
 
 | Number | Work |
 | --- | --- |
@@ -10,6 +10,9 @@ This is the Arduino version of the browser sketches. Open `LED_Art/LED_Art.ino` 
 | 4 | Approach |
 | 5 | Eye of Sauron |
 | 6 | Lissajous grid |
+| 7 | Test pattern (see Panel symptoms below) |
+| 8 | Message board |
+| 9 | COYS |
 
 ## Required Arduino libraries
 
@@ -77,6 +80,49 @@ same character as the browser preview without landing on the same pixels. Rain c
 noise only 64 times per frame, so it uses `noise3Exact()` and reproduces the preview
 exactly. Use the exact variant only where the call count is small — this chip emulates
 double in software.
+
+## Message board
+
+A line of Japanese scrolls right to left, like the sign above the door of a
+Shinkansen carriage. Kanji glow purple, kana off-white.
+
+No font lives on the chip. `MessageBoardData.h` holds the line already
+rasterised: a 464 x 23 px strip, four bits of coverage per pixel, two pixels to
+a byte, 5.3 KB of flash. Alongside it are the scroll speed, the ink threshold
+and the three tints, so everything that decides the picture arrives from the
+same file.
+
+To change the words, edit `SETTINGS` in `sketches/message-board.js`, run
+`npm run dev`, open `work/bake-message-board.html`, save the file it offers, and
+replace `LED_Art/MessageBoardData.h` with it. Do not edit the header by hand.
+
+The browser preview and the panel are the same picture because both read a strip
+built by `src/jp-strip.js` — the browser calls it every time it loads the
+sketch, and the bake page calls it once to write the header. Coverage is rounded
+to 16 steps inside that function rather than at bake time, so the preview shows
+what the panel will show.
+
+## COYS
+
+The crest and the wordmark are rebuilt at 32 x 32 and tiled four times, each
+quarter carrying a different noise: flicker top left, spray top right, glitch
+bottom left, frosted glass bottom right. Ink is dot art in `Coys.h`, so it is
+edited in place — no bake step, unlike the message board.
+
+`NoiseVeil.h` is the port of `src/noise-veil.js`. Its buffers are the reason
+global RAM jumps to 49 KB: three 32 x 32 float fields for the sharp, mid and
+soft copies of the flag, two more inside the veil, and one scratch buffer for
+`soften()`. `kVeilMax` sets the largest side a veil can cover; raising it to 64
+for a full-panel veil doubles those buffers.
+
+Three of the four quarters land on exactly the pixels the browser preview shows.
+They are driven by `grainAt()`, whose integer hash gives the same values in both
+languages, so spray, glitch and glass were checked byte for byte against the
+preview at two different times. Flicker is the exception: its blotches come from
+`noise3()` in float, so it has the same character with different pixels — over
+60 samples the two run to the same range and the same average brightness within
+a tenth, but never to the same frame. Making it match exactly would need
+`noise3Exact()`, and at 245 calls per frame this chip cannot afford it.
 
 ## Portrait
 
